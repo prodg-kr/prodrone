@@ -147,7 +147,7 @@ class NewsTranslator:
             return text
 
     def download_image(self, url):
-        """이미지 다운로드"""
+        """이미지 다운로드 (안전한 파일명 생성)"""
         if not url: 
             return None
         try:
@@ -156,16 +156,30 @@ class NewsTranslator:
             res = requests.get(url, headers=headers, timeout=15)
             res.raise_for_status()
             
-            filename = os.path.basename(urlparse(url).path)
-            if not filename or len(filename) > 100:
-                filename = f"image_{int(time.time())}.jpg"
-            if '?' in filename:
-                filename = filename.split('?')[0]
-                
+            # 안전한 파일명 생성 (타임스탬프 + 확장자)
+            import hashlib
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+            timestamp = int(time.time())
+            
+            # 확장자 추출
+            original_filename = os.path.basename(urlparse(url).path)
+            if '?' in original_filename:
+                original_filename = original_filename.split('?')[0]
+            
+            ext = os.path.splitext(original_filename)[1]
+            if not ext or ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                ext = '.jpg'
+            
+            # 안전한 파일명: drone_타임스탬프_해시.확장자
+            filename = f"drone_{timestamp}_{url_hash}{ext}"
+            
             path = Path(f"/tmp/{filename}")
             with open(path, 'wb') as f:
                 f.write(res.content)
+            
+            print(f"   ✅ 저장: {filename}")
             return path
+            
         except Exception as e:
             print(f"⚠️ 이미지 다운로드 실패: {e}")
         return None
