@@ -108,16 +108,25 @@ class NewsTranslator:
         """기사의 대표 이미지 다운로드"""
         try:
             print(f"🖼️ 이미지 다운로드 중: {url}")
-            response = requests.get(url, timeout=10)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
             
             # 임시 파일로 저장
             filename = Path(url).name
+            if '?' in filename:
+                filename = filename.split('?')[0]  # 쿼리 파라미터 제거
+            if not filename or len(filename) > 100:
+                filename = 'image.jpg'
+            
             image_path = Path(f"/tmp/{filename}")
             
             with open(image_path, 'wb') as f:
                 f.write(response.content)
             
+            print(f"✅ 이미지 저장 완료: {image_path}")
             return image_path
         except Exception as e:
             print(f"⚠️ 이미지 다운로드 실패: {e}")
@@ -158,6 +167,83 @@ class NewsTranslator:
         if match:
             return match.group(1)
         return None
+    
+    def fetch_article_image(self, url):
+        """기사 페이지에서 대표 이미지 URL 추출"""
+        try:
+            from bs4 import BeautifulSoup
+            
+            print(f"🔍 기사 이미지 검색 중: {url}")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            image_url = None
+            
+            # 1. Open Graph 이미지 (가장 신뢰도 높음)
+            og_image = soup.find('meta', property='og:image')
+            if og_image and og_image.get('content'):
+                image_url = og_image['content']
+                print(f"✅ OG 이미지 발견")
+            
+            # 2. Twitter Card 이미지
+            if not image_url:
+                twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
+                if twitter_image and twitter_image.get('content'):
+                    image_url = twitter_image['content']
+                    print(f"✅ Twitter Card 이미지 발견")
+            
+            # 3. Article 내 첫 이미지
+            if not image_url:
+                article = soup.find('article')
+                if article:
+                    img = article.find('img')
+                    if img and img.get('src'):
+                        image_url = img['src']
+                        print(f"✅ Article 이미지 발견")
+            
+            # 4. Featured/Main 이미지 클래스
+            if not image_url:
+                img = soup.find('img', class_=['featured-image', 'wp-post-image', 'main-image', 'post-thumbnail'])
+                if img and img.get('src'):
+                    image_url = img['src']
+                    print(f"✅ Featured 이미지 발견")
+            
+            # 5. 본문 내 첫 번째 큰 이미지
+            if not image_url:
+                for img in soup.find_all('img'):
+                    src = img.get('src', '')
+                    if not src:
+                        continue
+                    # 작은 아이콘, 로고, 광고 제외
+                    if any(x in src.lower() for x in ['icon', 'logo', 'ad', 'banner', 'avatar']):
+                        continue
+                    # 최소 크기 확인
+                    width = img.get('width', '500')
+                    try:
+                        if int(width) >= 300:
+                            image_url = src
+                            print(f"✅ 본문 이미지 발견")
+                            break
+                    except:
+                        image_url = src
+                        print(f"✅ 본문 이미지 발견")
+                        break
+            
+            # 상대 경로를 절대 경로로 변환
+            if image_url and not image_url.startswith('http'):
+                from urllib.parse import urljoin
+                image_url = urljoin(url, image_url)
+                print(f"📍 상대 경로 변환: {image_url}")
+            
+            return image_url
+            
+        except Exception as e:
+            print(f"⚠️ 이미지 검색 실패: {e}")
+            return None
     
     def post_to_wordpress(self, title, content, featured_image_id=None):
         """워드프레스에 포스트 게시"""
@@ -209,17 +295,18 @@ class NewsTranslator:
         
         # 이미지 처리
         featured_image_id = None
-        image_url = self.extract_image_from_content(article['content'])
+        
+        # 기사 페이지에서 직접 이미지 추출
+        image_url = self.fetch_article_image(article['link'])
         
         if image_url:
-            # 상대 경로를 절대 경로로 변환
-            if not image_url.startswith('http'):
-                image_url = f"https://drone.jp{image_url}"
-            
             image_path = self.download_featured_image(image_url)
             if image_path:
                 featured_image_id = self.upload_image_to_wordpress(image_path, translated_title)
-                image_path.unlink()  # 임시 파일 삭제
+                try:
+                    image_path.unlink()  # 임시 파일 삭제
+                except:
+                    pass
         
         # 워드프레스에 게시
         success = self.post_to_wordpress(
