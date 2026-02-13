@@ -49,9 +49,8 @@ class NewsTranslator:
         print(f"📡 RSS 피드 확인 중: {DRONE_JP_RSS}")
         feed = feedparser.parse(DRONE_JP_RSS)
         
-        # 24시간 이내 기사만
-        yesterday = datetime.now() - timedelta(days=1)
-        recent_articles = []
+# 7일 이내 기사 (일주일)
+yesterday = datetime.now() - timedelta(days=7)
         
         for entry in feed.entries[:10]:  # 최신 10개만 체크
             if entry.link in self.posted_articles:
