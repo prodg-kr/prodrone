@@ -2,7 +2,9 @@ baseURL = "https://prodrone.kr"
 languageCode = "ko"
 title = "ProDrone.kr"
 theme = "PaperMod"
-paginate = 10
+
+[pagination]
+  pagerSize = 10
 
 [author]
   name = "ProDrone"
