@@ -1,5 +1,7 @@
 baseURL = "https://prodrone.kr"
-languageCode = "ko"
+languageCode = "ko-KR"
+defaultContentLanguage = "ko"
+defaultContentLanguageInSubdir = false
 title = "ProDrone.kr"
 theme = "PaperMod"
 
@@ -12,6 +14,13 @@ theme = "PaperMod"
 [params]
   description = "드론/카메라 최신 뉴스"
   defaultTheme = "auto"
+  cover.responsive = true
+  cover.linkFullImages = true
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
 
 [menu]
   [[menu.main]]
