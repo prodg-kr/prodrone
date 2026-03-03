@@ -2,7 +2,6 @@ name: drone.jp → prodrone.kr 자동 번역 및 게시
 
 on:
   schedule:
-    # 매일 KST 07:00 = UTC 22:00
     - cron: '0 22 * * *'
   workflow_dispatch:
     inputs:
@@ -54,6 +53,5 @@ jobs:
         run: |
           echo "✅ 완료: $(date -u) (UTC)"
           echo "모드: ${{ github.event_name }}"
-          echo "POST_STATUS=${{ github.event.inputs.post_status || 'draft' }}"
           echo "FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}"
           echo "TARGET_URL=${{ github.event.inputs.target_url || '' }}"
