@@ -1,0 +1,18 @@
+baseURL = "https://prodrone.kr"
+languageCode = "ko"
+title = "ProDrone.kr"
+theme = "PaperMod"
+paginate = 10
+
+[author]
+  name = "ProDrone"
+
+[params]
+  description = "드론/카메라 최신 뉴스"
+  defaultTheme = "auto"
+
+[menu]
+  [[menu.main]]
+    name = "홈"
+    url = "/"
+    weight = 1
