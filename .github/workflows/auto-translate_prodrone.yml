@@ -54,3 +54,11 @@ jobs:
           echo "모드: ${{ github.event_name }}"
           echo "FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}"
           echo "TARGET_URL=${{ github.event.inputs.target_url || '' }}"
+
+      - name: posted_articles 커밋
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add posted_articles_drone.json
+          git diff --cached --quiet || git commit -m "chore: update posted_articles"
+          git push
