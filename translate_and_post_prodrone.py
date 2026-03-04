@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-DRONE.jp 자동 번역 시스템 v9.2.0
+DRONE.jp 자동 번역 시스템 v9.3.0
 파이프라인: 일본어 원문 → Gemini 번역 → Gemini 편집 → Hugo Markdown → GitHub Push
 
-v9.1.0 → v9.2.0 변경사항:
-- 게시 날짜: 원문 날짜 → 번역한 오늘 날짜
-- 수동 실행도 최신 기사 우선 순서로 변경
+v9.2.0 → v9.3.0 변경사항:
+- 본문 출력 형식: HTML → 순수 Markdown (raw HTML omitted 문제 완전 해결)
+- tldr: <ul><li> HTML → - 마크다운 목록
+- 제목 한국어 전용 강제 (일본어 잔존 방지)
 """
 
 import os
@@ -119,8 +120,8 @@ class GeminiEngine:
         return ""
 
     def translate_article(self, title_ja: str, body_text: str) -> dict:
-        prompt = f"""당신은 영상/카메라 전문 미디어의 한국어 에디터입니다.
-아래 일본어 기사(HTML)를 한국어로 번역·편집하여 JSON으로만 출력하세요.
+        prompt = f"""당신은 드론/카메라 전문 미디어의 한국어 에디터입니다.
+아래 일본어 기사를 한국어로 번역하여 JSON으로만 출력하세요.
 
 === 일본어 원문 ===
 제목: {title_ja}
@@ -130,24 +131,23 @@ class GeminiEngine:
 
 === 번역 규칙 ===
 1. 일본어(히라가나·가타카나·한자)를 완전히 한국어로 번역
-2. 문체: 반드시 '~다', '~했다', '~이다' 등 기사 형식의 평어체(해라체/한다체)로 통일
+2. 문체: 반드시 '~다', '~했다', '~이다' 등 기사 형식의 평어체로 통일
 3. 브랜드명·모델명 원문 유지: Sony, Canon, Nikon, DJI, Blackmagic, Sigma 등
 4. 해상도: 4K, 8K, Full HD / 프레임레이트: fps, 24p, 60p
-5. ★중요★: 본문에 포함된 <img>, <figure>, <iframe> 등의 HTML 미디어 태그와 속성(src, alt 등)은 절대 삭제하거나 수정하지 말고 제자리에 그대로 유지하세요.
-6. 기계 번역 느낌 없이 사람이 쓴 듯 자연스럽게 (Google SEO·AdSense 품질 기준)
+5. 기계 번역 느낌 없이 사람이 쓴 듯 자연스럽게
 
 === 출력 JSON 규칙 ===
-- title: SEO 최적화 제목 (브랜드명·모델명 필수 포함, 최대 50자)
-- content: 번역 본문 (원본 HTML 구조 및 이미지 태그 완벽 유지)
+- title: SEO 최적화 제목 (브랜드명·모델명 필수 포함, 최대 50자, 한국어만)
+- content: 번역 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록 사용, HTML 태그 사용 금지)
 - excerpt: 구글 스니펫용 요약 (80~100자, 평어체)
-- tldr: 핵심 요약 3~4항목 (<ul><li> HTML, 평어체)
+- tldr: 핵심 요약 3~4항목을 Markdown 목록으로 (- 항목 형식)
 - 마크다운 백틱 없이 JSON만 출력
 
 {{
   "title": "SEO 제목",
-  "content": "<p>본문</p> <figure><img src='...'></figure>",
+  "content": "## 소제목\\n\\n본문 단락\\n\\n## 소제목2\\n\\n본문",
   "excerpt": "요약문",
-  "tldr": "<ul><li>요약1</li><li>요약2</li><li>요약3</li></ul>"
+  "tldr": "- 요약1\\n- 요약2\\n- 요약3"
 }}"""
 
         result = self._call_api(prompt, max_tokens=8192)
@@ -180,7 +180,7 @@ class GeminiEngine:
 === 편집 규칙 ===
 1. SEO 키워드 강화
    - 제목과 첫 문단에 핵심 키워드(브랜드명·모델명·기능명) 자연스럽게 포함
-   - 소제목(h2/h3)에 키워드 배치
+   - ## 소제목에 키워드 배치
    - 검색 의도에 맞는 자연어 키워드 추가 (예: "가격", "출시일", "스펙", "리뷰")
 
 2. 문체 자연스럽게 다듬기
@@ -194,17 +194,16 @@ class GeminiEngine:
    - 단순 나열이 아닌 맥락 있는 설명 추가
    - 광고성·스팸성 표현 제거
    - 최소 300자 이상 실질적 내용 유지
-   - ★중요★ <img>, <figure>, <iframe> 등 HTML 미디어 태그 절대 삭제/수정 금지
 
 === 출력 JSON 규칙 ===
-- title: SEO 최적화 제목 (브랜드명·모델명 필수, 최대 50자)
-- content: 편집된 본문 (HTML 구조 및 이미지 태그 완벽 유지)
+- title: SEO 최적화 제목 (브랜드명·모델명 필수, 최대 50자, 한국어만)
+- content: 편집된 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록 사용, HTML 태그 사용 금지)
 - excerpt: 구글 스니펫용 요약 (80~100자, 평어체, 키워드 포함)
 - 마크다운 백틱 없이 JSON만 출력
 
 {{
   "title": "편집된 SEO 제목",
-  "content": "<p>편집된 본문</p>",
+  "content": "## 소제목\\n\\n편집된 본문",
   "excerpt": "편집된 요약문"
 }}"""
 
@@ -753,15 +752,12 @@ draft: false
 
         final_content = ""
         if tldr_html:
-            final_content += (
-                '<div style="background:#f8f9fa;padding:20px;border-radius:8px;'
-                'border-left:5px solid #0056b3;margin-bottom:30px;">\n'
-                '<h3 style="margin-top:0;color:#0056b3;">💡 핵심 요약</h3>\n'
-                f'{tldr_html}\n</div>\n\n'
-            )
+            final_content += "## 💡 핵심 요약\n\n"
+            final_content += tldr_html.strip() + "\n\n"
+            final_content += "---\n\n"
         final_content += content_ko
         final_content += (
-            "\n\n---\n"
+            "\n\n---\n\n"
             f"**원문:** [{article['title']}]({article['link']})"
         )
 
