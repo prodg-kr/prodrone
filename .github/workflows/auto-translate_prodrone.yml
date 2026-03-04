@@ -10,9 +10,9 @@ on:
         required: false
         default: 'false'
       gemini_model:
-        description: 'Gemini 모델 (기본: gemini-2.5-flash-lite)'
+        description: 'Gemini 모델 (기본: gemini-2.0-flash)'
         required: false
-        default: 'gemini-2.5-flash-lite'
+        default: 'gemini-2.0-flash'
       target_url:
         description: '단일 기사 URL(선택): 예) https://drone.jp/news/....html'
         required: false
@@ -42,16 +42,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HUGO_SITE_REPO: prodg-kr/prodrone
           FORCE_UPDATE: ${{ github.event.inputs.force_update || 'false' }}
-          GEMINI_MODEL: ${{ github.event.inputs.gemini_model || 'gemini-2.5-flash-lite' }}
+          GEMINI_MODEL: ${{ github.event.inputs.gemini_model || 'gemini-2.0-flash' }}
           TARGET_URL: ${{ github.event.inputs.target_url || '' }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: python translate_and_post_prodrone.py
 
       - name: posted_articles 커밋
+        if: always()
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
+          git stash
           git pull --rebase origin main
+          git stash pop || true
           git add posted_articles_drone.json
           git diff --cached --quiet || git commit -m "chore: update posted_articles"
           git push
