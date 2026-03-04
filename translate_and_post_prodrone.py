@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-DRONE.jp 자동 번역 시스템 v9.0.0
-파이프라인: 일본어 원문 → Gemini 1회 JSON 통합 번역 → Hugo Markdown → GitHub Push
+DRONE.jp 자동 번역 시스템 v9.2.0
+파이프라인: 일본어 원문 → Gemini 번역 → Gemini 편집 → Hugo Markdown → GitHub Push
 
-v8.0.0 → v9.0.0 변경사항:
-- 발행 대상: WordPress REST API → Hugo Markdown 파일 생성 + GitHub push
-- prodrone-site 레포의 content/posts/ 에 MD 파일 자동 생성
-- 이미지: static/images/ 에 저장
+v9.1.0 → v9.2.0 변경사항:
+- 게시 날짜: 원문 날짜 → 번역한 오늘 날짜
+- 수동 실행도 최신 기사 우선 순서로 변경
 """
 
 import os
@@ -284,22 +283,28 @@ class NewsTranslator:
                         featured_image_path: Path = None) -> bool:
         """Hugo Markdown 파일 생성 + GitHub push"""
         try:
-            date_str = article_date.strftime('%Y-%m-%dT%H:%M:%S+09:00')
-            
+            # 게시 날짜는 항상 오늘(번역한 날)
+            date_str = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+09:00')
+
             # 이미지 처리
-            featured_image = ""
+            cover_image = ""
             if featured_image_path and featured_image_path.exists():
                 img_dest = HUGO_REPO_LOCAL / "static/images" / featured_image_path.name
                 img_dest.write_bytes(featured_image_path.read_bytes())
-                featured_image = f"/images/{featured_image_path.name}"
+                cover_image = f"/images/{featured_image_path.name}"
 
             # Front matter + 본문
+            cover_block = f"""cover:
+  image: "{cover_image}"
+  alt: "{title.replace('"', "'")}"
+  relative: false""" if cover_image else ""
+
             md_content = f"""---
 title: "{title.replace('"', "'")}"
 date: {date_str}
 slug: "{slug}"
 description: "{excerpt.replace('"', "'")}"
-featured_image: "{featured_image}"
+{cover_block}
 draft: false
 ---
 
@@ -476,8 +481,17 @@ draft: false
                 target += archive[:need]
             target = target[:DAILY_LIMIT]
         else:
-            print("📖 수동 실행: 아카이브 오래된 순 10건 (블로그 채우기)")
-            target = self.fetch_archive_articles(DAILY_LIMIT, oldest_first=True)
+            print("📖 수동 실행: 최신 기사 우선 10건")
+            rss = self.fetch_rss_articles()
+            rss.sort(key=lambda x: x['date'], reverse=True)
+            target = rss[:DAILY_LIMIT]
+            need = DAILY_LIMIT - len(target)
+            if need > 0:
+                archive = self.fetch_archive_articles(need * 2, oldest_first=False)
+                rss_links = {a['link'] for a in target}
+                archive = [a for a in archive if a['link'] not in rss_links]
+                target += archive[:need]
+            target = target[:DAILY_LIMIT]
 
         print(f"✅ 처리 대상: {len(target)}건")
         return target
@@ -662,23 +676,6 @@ draft: false
             print(f"⚠️ 이미지 다운로드 실패: {e}")
             return None
 
-    def upload_media(self, image_path: Path):
-        if not image_path or not image_path.exists():
-            return None
-        try:
-            with open(image_path, 'rb') as img:
-                res = requests.post(
-                    f"{self.wordpress_api}/media",
-                    auth=(WORDPRESS_USER, WORDPRESS_APP_PASSWORD),
-                    headers={'Content-Disposition': f'attachment; filename={image_path.name}'},
-                    files={'file': (image_path.name, img, 'image/jpeg')}
-                )
-                res.raise_for_status()
-                return res.json()
-        except Exception as e:
-            print(f"⚠️ 미디어 업로드 실패: {e}")
-            return None
-
     def commit_posted_articles(self):
         try:
             subprocess.run(['git', 'config', 'user.email', 'action@github.com'], check=True)
@@ -820,8 +817,6 @@ draft: false
             print(f"\n{'='*60}")
             print(f"🏁 완료: {success}/{len(articles)}건 게시")
             print(f"{'='*60}\n")
-            if success > 0:
-                self.commit_posted_articles()
 
 
 if __name__ == "__main__":
