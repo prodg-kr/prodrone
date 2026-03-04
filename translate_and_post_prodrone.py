@@ -44,7 +44,7 @@ HUGO_REPO_LOCAL        = Path("/tmp/prodrone-site")
 GITHUB_EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME", "workflow_dispatch")
 IS_SCHEDULED      = GITHUB_EVENT_NAME == "schedule"
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 # 단일 URL 1개만 처리할 때 사용 (예: https://drone.jp/news/...)
 TARGET_URL  = os.environ.get("TARGET_URL", "").strip()
