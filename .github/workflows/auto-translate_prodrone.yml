@@ -51,6 +51,7 @@ jobs:
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
+          git pull --rebase origin main
           git add posted_articles_drone.json
           git diff --cached --quiet || git commit -m "chore: update posted_articles"
           git push
