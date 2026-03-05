@@ -214,12 +214,14 @@ class GeminiEngine:
 - title: SEO 최적화 제목 (브랜드명·모델명 필수, 최대 50자, 한국어만)
 - content: 편집된 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록 사용, HTML 태그 사용 금지)
 - excerpt: 구글 스니펫용 요약 (80~100자, 평어체 필수 — "~다", "~했다"로 끝낼 것)
+- editor_note: 한국 독자를 위한 에디터 코멘트 2~3문장 (어떻게 받아들이면 좋을지, 한국 시장 의미/전망 등 평어체)
 - 마크다운 백틱 없이 JSON만 출력
 
 {{
   "title": "편집된 SEO 제목",
   "content": "## 소제목\\n\\n편집된 본문. 이러한 기능을 제공한다.",
-  "excerpt": "편집된 요약문. 이러한 기능을 갖추고 있다."
+  "excerpt": "편집된 요약문. 이러한 기능을 갖추고 있다.",
+  "editor_note": "한국 독자 관점에서 바라본 코멘트. 이 기술이 시장에 대한 함의를 가진다."
 }}"""
 
         result = self._call_api(prompt, max_tokens=8192)
@@ -233,6 +235,17 @@ class GeminiEngine:
         except Exception as e:
             print(f"⚠️ 편집 JSON 파싱 실패: {e} | 원문: {result[:200]}")
         return {}
+
+    def expand_thin_content(self, title_ko: str, content_ko: str) -> str:
+        """thin content(번역 결과 부족) 보강 요청"""
+        prompt = f"""아래 드론/카메라 기사는 본문이 너무 짧습니다.
+한국 독자에게 유용한 배경 설명이나 기술 상세를 2~3 문단 추가하여 전체 본문을 반환하세요.
+평어체(~다, ~했다)로 작성하고, 기존 내용은 바꾸지 마세요.
+제목: {title_ko}
+
+{content_ko[:10000]}"""
+        result = self._call_api(prompt, max_tokens=4096)
+        return result.strip() if result else content_ko
 
     def retranslate_content(self, content_ko: str) -> str:
         """일본어 잔존 시 재번역 (긴급용)"""
@@ -694,6 +707,30 @@ draft: false
             print(f"⚠️ 스크래핑 실패: {e}")
             return "", None, []
 
+    def get_recent_post_links(self, exclude_slug: str = '', count: int = 3) -> list:
+        """Hugo repo의 최근 게시글에서 (title, slug) 목록 반환"""
+        posts_dir = HUGO_REPO_LOCAL / "content/posts"
+        if not posts_dir.exists():
+            return []
+        md_files = sorted(posts_dir.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
+        results = []
+        for f in md_files:
+            if len(results) >= count:
+                break
+            try:
+                text = f.read_text(encoding='utf-8')
+                title_m = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', text, re.MULTILINE)
+                slug_m  = re.search(r'^slug:\s*["\']?(.+?)["\']?\s*$',  text, re.MULTILINE)
+                if not title_m or not slug_m:
+                    continue
+                slug = slug_m.group(1).strip()
+                if slug == exclude_slug:
+                    continue
+                results.append((title_m.group(1).strip(), slug))
+            except Exception:
+                continue
+        return results
+
     def generate_seo_slug(self, title_ko: str, article_date: datetime) -> str:
         slug = re.sub(r'[^a-zA-Z0-9\s]', '', title_ko)
         slug = slug.lower().strip().replace(' ', '-')
@@ -794,11 +831,19 @@ draft: false
             print("❌ 번역 실패 → 스킵")
             return False
 
-        title_ko   = translated['title']
-        content_ko = translated['content']
-        excerpt    = translated.get('excerpt', '')
-        tldr_html  = translated.get('tldr', '')
+        title_ko    = translated['title']
+        content_ko  = translated['content']
+        excerpt     = translated.get('excerpt', '')
+        tldr_html   = translated.get('tldr', '')
         print(f"   📌 제목: {title_ko}")
+
+        # [4] thin content 체크 — 600자 미만이면 보강 1회 시도
+        if len(content_ko.replace('\n', '').replace(' ', '')) < 600:
+            print("   ⚠️ thin content 감지 → 보강 요청...")
+            content_ko = self.gemini.expand_thin_content(title_ko, content_ko)
+            if len(content_ko.replace('\n', '').replace(' ', '')) < 400:
+                print("❌ 보강 후에도 내용 부족 → 스킵")
+                return False
 
         if self.gemini._has_japanese(content_ko):
             print("   ⚠️ 일본어 잔존 → 재번역 1회 시도...")
@@ -809,12 +854,14 @@ draft: false
         print("✏️  [2단계] Gemini 편집 (SEO·문체·애드센스 품질)...")
         edited = self.gemini.edit_article(title_ko, content_ko, excerpt)
         if edited and edited.get('title') and edited.get('content'):
-            title_ko   = edited['title']
-            content_ko = edited['content']
-            excerpt    = edited.get('excerpt', excerpt)
+            title_ko    = edited['title']
+            content_ko  = edited['content']
+            excerpt     = edited.get('excerpt', excerpt)
+            editor_note = edited.get('editor_note', '').strip()
             print(f"   ✅ 편집 완료: {title_ko}")
         else:
             print("   ⚠️ 편집 실패 → 번역본 그대로 사용")
+            editor_note = ''
 
         slug = self.generate_seo_slug(title_ko, article['date'])
         print(f"🔗 Slug: {slug}")
@@ -826,6 +873,10 @@ draft: false
             local_img = self.download_image(img_url)
 
         final_content = ""
+        # [1] 편집자 코멘트 삽입
+        if editor_note:
+            final_content += f"> 편집자 코멘트: {editor_note}\n\n"
+
         # excerpt는 front matter의 description으로 이미 표시됨 → 본문 중복 제거
         if tldr_html:
             final_content += "## 💡 핵심 요약\n\n"
@@ -848,9 +899,20 @@ draft: false
             content_ko = '\n\n'.join(paragraphs)
 
         final_content += content_ko
+
+        # [2] 내부링크: 최근 게시글 3개 삽입
+        recent_links = self.get_recent_post_links(exclude_slug=slug, count=3)
+        if recent_links:
+            final_content += "\n\n---\n\n## 📌 관련 기사\n\n"
+            for r_title, r_slug in recent_links:
+                final_content += f"- [{r_title}](/posts/{r_slug}/)\n"
+
+        # [5] 출정 및 권리 문구
         final_content += (
             "\n\n---\n\n"
-            f"**원문:** [{article['title']}]({article['link']})"
+            f"**원문:** [{article['title']}]({article['link']})\n\n"
+            "> 본 글은 원문 기사를 참고해 한국 독자를 위해 요약·정리한 상단입니다. "
+            "저작권 관련 문의는 [Contact](/contact/)로 연락주세요."
         )
 
         print(f"📤 [3단계] Hugo MD 파일 생성 + GitHub push 중...")
