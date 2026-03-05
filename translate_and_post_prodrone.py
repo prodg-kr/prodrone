@@ -119,7 +119,6 @@ class GeminiEngine:
 
         return ""
 
-    def translate_article(self, title_ja: str, body_text: str) -> dict:
     def translate_article(self, title_ja: str, body_text: str, body_images: list = None) -> dict:
         # 이미지 목록을 Markdown 형식으로 변환
         images_md = ""
