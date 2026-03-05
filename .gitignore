@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Hugo
+.hugo_build.lock
+resources/_gen/
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# 로컬 임시
+/tmp/
