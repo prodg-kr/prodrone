@@ -120,6 +120,14 @@ class GeminiEngine:
         return ""
 
     def translate_article(self, title_ja: str, body_text: str) -> dict:
+    def translate_article(self, title_ja: str, body_text: str, body_images: list = None) -> dict:
+        # 이미지 목록을 Markdown 형식으로 변환
+        images_md = ""
+        if body_images:
+            images_md = "\n\n=== 본문 이미지 목록 (적절한 위치에 삽입) ===\n"
+            for i, img in enumerate(body_images[:5], 1):
+                images_md += f"{i}. ![{img['alt']}]({img['url']})\n"
+
         prompt = f"""당신은 드론/카메라 전문 미디어의 한국어 에디터입니다.
 아래 일본어 기사를 한국어로 번역하여 JSON으로만 출력하세요.
 
@@ -128,6 +136,7 @@ class GeminiEngine:
 
 본문:
 {body_text[:15000]}
+{images_md}
 
 === 번역 규칙 ===
 1. 일본어(히라가나·가타카나·한자)를 완전히 한국어로 번역
@@ -135,17 +144,18 @@ class GeminiEngine:
 3. 브랜드명·모델명 원문 유지: Sony, Canon, Nikon, DJI, Blackmagic, Sigma 등
 4. 해상도: 4K, 8K, Full HD / 프레임레이트: fps, 24p, 60p
 5. 기계 번역 느낌 없이 사람이 쓴 듯 자연스럽게
+6. 이미지 목록이 있으면 본문 내 적절한 위치에 ![alt](url) 형식으로 삽입
 
 === 출력 JSON 규칙 ===
 - title: SEO 최적화 제목 (브랜드명·모델명 필수 포함, 최대 50자, 한국어만)
-- content: 번역 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록 사용, HTML 태그 사용 금지)
+- content: 번역 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록, ![](url) 이미지 사용, HTML 태그 사용 금지)
 - excerpt: 구글 스니펫용 요약 (80~100자, 평어체)
 - tldr: 핵심 요약 3~4항목을 Markdown 목록으로 (- 항목 형식)
 - 마크다운 백틱 없이 JSON만 출력
 
 {{
   "title": "SEO 제목",
-  "content": "## 소제목\\n\\n본문 단락\\n\\n## 소제목2\\n\\n본문",
+  "content": "## 소제목\\n\\n본문 단락\\n\\n![설명](https://example.com/image.jpg)\\n\\n## 소제목2\\n\\n본문",
   "excerpt": "요약문",
   "tldr": "- 요약1\\n- 요약2\\n- 요약3"
 }}"""
@@ -626,11 +636,21 @@ draft: false
                     if not tag.get_text(strip=True) and not tag.find('img'):
                         tag.decompose()
 
-            return str(content_div), article_date
+            # 본문 이미지 URL 수집
+            body_images = []
+            for img in content_div.find_all('img'):
+                src = img.get('src', '') or img.get('data-src', '')
+                if src and src.startswith('http') and any(
+                    ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+                ):
+                    alt = img.get('alt', '')
+                    body_images.append({'url': src, 'alt': alt})
+
+            return str(content_div), article_date, body_images
 
         except Exception as e:
             print(f"⚠️ 스크래핑 실패: {e}")
-            return "", None
+            return "", None, []
 
     def generate_seo_slug(self, title_ko: str, article_date: datetime) -> str:
         slug = re.sub(r'[^a-zA-Z0-9\s]', '', title_ko)
@@ -704,7 +724,7 @@ draft: false
             print("⏭️  이미 게시됨 → 스킵")
             return False
 
-        body_text, exact_date = self.fetch_full_content(article['link'])
+        body_text, exact_date, body_images = self.fetch_full_content(article['link'])
         if not body_text:
             print("⚠️ 본문 스크래핑 실패 → 스킵")
             return False
@@ -713,8 +733,12 @@ draft: false
             article['date'] = exact_date
             print(f"🕒 원문 시각 복원 성공: {exact_date.strftime('%Y-%m-%d %H:%M:%S')}")
 
+        # 본문 이미지 목록 출력
+        if body_images:
+            print(f"🖼️ 본문 이미지 {len(body_images)}개 감지")
+
         print("🔄 [1단계] Gemini 번역 (1회 JSON 통합)...")
-        translated = self.gemini.translate_article(article['title'], body_text)
+        translated = self.gemini.translate_article(article['title'], body_text, body_images)
 
         if not translated or not translated.get('title') or not translated.get('content'):
             print("❌ 번역 실패 → 스킵")
