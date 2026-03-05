@@ -33,7 +33,7 @@ PRONEWS_ARCHIVE_BASE   = "https://drone.jp/news/page"
 PRONEWS_BASE_URL       = "https://drone.jp"
 POSTED_ARTICLES_FILE   = "posted_articles_drone.json"
 FORCE_UPDATE           = os.environ.get("FORCE_UPDATE", "false").lower() == "true"
-DAILY_LIMIT            = 10
+DAILY_LIMIT            = 1
 ARCHIVE_MAX_PAGES      = 20
 
 # Hugo 사이트 레포 설정
@@ -45,7 +45,7 @@ HUGO_REPO_LOCAL        = Path("/tmp/prodrone-site")
 GITHUB_EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME", "workflow_dispatch")
 IS_SCHEDULED      = GITHUB_EVENT_NAME == "schedule"
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 # 단일 URL 1개만 처리할 때 사용 (예: https://drone.jp/news/...)
 TARGET_URL  = os.environ.get("TARGET_URL", "").strip()
@@ -518,15 +518,14 @@ draft: false
                 target += archive[:need]
             target = target[:DAILY_LIMIT]
         else:
-            print("📖 수동 실행: 최신 우선 + 아카이브 보충 (10건 채우기)")
+            print("📖 수동 실행: 최신 기사 우선 10건")
             rss = self.fetch_rss_articles()
             rss.sort(key=lambda x: x['date'], reverse=True)
             target = rss[:DAILY_LIMIT]
             need = DAILY_LIMIT - len(target)
             if need > 0:
-                print(f"   RSS {len(target)}건 → 아카이브에서 {need}건 보충 (최신순)")
-                rss_links = {a['link'] for a in target}
                 archive = self.fetch_archive_articles(need * 2, oldest_first=False)
+                rss_links = {a['link'] for a in target}
                 archive = [a for a in archive if a['link'] not in rss_links]
                 target += archive[:need]
             target = target[:DAILY_LIMIT]
@@ -883,6 +882,11 @@ draft: false
             local_img = self.download_image(img_url)
 
         final_content = ""
+
+        # excerpt + <!--more--> → 썸네일이 핵심요약/editor_note 노출 방지
+        if excerpt:
+            final_content += f"{excerpt}\n\n<!--more-->\n\n"
+
         # [1] 편집자 코멘트 삽입
         if editor_note:
             final_content += f"> 편집자 코멘트: {editor_note}\n\n"
