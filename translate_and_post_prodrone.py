@@ -826,9 +826,7 @@ draft: false
             local_img = self.download_image(img_url)
 
         final_content = ""
-        # excerpt 1문단 + <!--more--> → 썸네일에 핵심요약 노출 방지
-        if excerpt:
-            final_content += f"{excerpt}\n\n<!--more-->\n\n"
+        # excerpt는 front matter의 description으로 이미 표시됨 → 본문 중복 제거
         if tldr_html:
             final_content += "## 💡 핵심 요약\n\n"
             final_content += tldr_html.strip() + "\n\n"
