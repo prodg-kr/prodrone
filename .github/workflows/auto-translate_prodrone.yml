@@ -2,7 +2,7 @@ name: drone.jp → proDRONE.kr 자동 번역 및 게시
 
 on:
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 1 * * *'
   workflow_dispatch:
     inputs:
       force_update:

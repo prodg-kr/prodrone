@@ -33,7 +33,7 @@ PRONEWS_ARCHIVE_BASE   = "https://drone.jp/news/page"
 PRONEWS_BASE_URL       = "https://drone.jp"
 POSTED_ARTICLES_FILE   = "posted_articles_drone.json"
 FORCE_UPDATE           = os.environ.get("FORCE_UPDATE", "false").lower() == "true"
-DAILY_LIMIT            = 1
+DAILY_LIMIT            = 10
 ARCHIVE_MAX_PAGES      = 20
 
 # Hugo 사이트 레포 설정
@@ -518,14 +518,15 @@ draft: false
                 target += archive[:need]
             target = target[:DAILY_LIMIT]
         else:
-            print("📖 수동 실행: 최신 기사 우선 10건")
+            print("📖 수동 실행: 최신 우선 + 아카이브 보충 (10건 채우기)")
             rss = self.fetch_rss_articles()
             rss.sort(key=lambda x: x['date'], reverse=True)
             target = rss[:DAILY_LIMIT]
             need = DAILY_LIMIT - len(target)
             if need > 0:
-                archive = self.fetch_archive_articles(need * 2, oldest_first=False)
+                print(f"   RSS {len(target)}건 → 아카이브에서 {need}건 보충 (최신순)")
                 rss_links = {a['link'] for a in target}
+                archive = self.fetch_archive_articles(need * 2, oldest_first=False)
                 archive = [a for a in archive if a['link'] not in rss_links]
                 target += archive[:need]
             target = target[:DAILY_LIMIT]
