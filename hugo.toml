@@ -14,9 +14,13 @@ theme = "PaperMod"
 [params]
   description = "드론/카메라 최신 뉴스"
   defaultTheme = "auto"
-  cover.responsive = true
-  cover.linkFullImages = true
-  summary = false
+
+[params.cover]
+  hidden = false
+  hiddenInList = false
+  hiddenInSingle = false
+  responsive = true
+  linkFullImages = true
 
 [markup]
   [markup.goldmark]
