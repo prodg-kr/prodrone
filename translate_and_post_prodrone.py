@@ -883,12 +883,12 @@ draft: false
             final_content += tldr_html.strip() + "\n\n"
             final_content += "---\n\n"
 
-        # 본문 이미지를 단락 사이에 균등 삽입 (이미 이미지 있으면 스킵)
+        # 본문 이미지: 외부 URL 그대로 삽입 (대표 이미지만 로컬 저장)
+        # ※ 본문 이미지 로컬화 시 GitHub 무료 용량(1GB) 초과 리스크 있어 외부 링크 유지
         if body_images and "![" not in content_ko:
             paragraphs = content_ko.split('\n\n')
             total = len(paragraphs)
             imgs = body_images[:5]
-            # 본문 1/3, 2/3 지점에 이미지 삽입
             insert_positions = sorted(set([
                 max(1, total // (len(imgs) + 1) * (i + 1))
                 for i in range(len(imgs))
@@ -911,7 +911,7 @@ draft: false
         final_content += (
             "\n\n---\n\n"
             f"**원문:** [{article['title']}]({article['link']})\n\n"
-            "> 본 글은 원문 기사를 참고해 한국 독자를 위해 요약·정리한 상단입니다. "
+            "> 본 글은 원문을 참고해 한국 독자를 위해 요약·정리한 내용입니다. "
             "저작권 관련 문의는 [Contact](/contact/)로 연락주세요."
         )
 
