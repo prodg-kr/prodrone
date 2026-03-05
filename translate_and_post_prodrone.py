@@ -18,7 +18,7 @@ from pathlib import Path
 import json
 import time
 from urllib.parse import urlparse, urljoin
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 import hashlib
 import re
 import subprocess
@@ -131,7 +131,7 @@ class GeminiEngine:
 
 === 번역 규칙 ===
 1. 일본어(히라가나·가타카나·한자)를 완전히 한국어로 번역
-2. 문체: 반드시 '~다', '~했다', '~이다' 등 기사 형식의 평어체로 통일
+2. 문체: 본문은 반드시 '~다', '~했다', '~이다' 등 기사 형식의 평어체로 통일. 단, [COMMENT]~[/COMMENT] 구간은 코멘트이므로 '~입니다', '~합니다' 존댓말로 번역
 3. 브랜드명·모델명 원문 유지: Sony, Canon, Nikon, DJI, Blackmagic, Sigma 등
 4. 해상도: 4K, 8K, Full HD / 프레임레이트: fps, 24p, 60p
 5. 기계 번역 느낌 없이 사람이 쓴 듯 자연스럽게
@@ -186,7 +186,8 @@ class GeminiEngine:
 2. 문체 자연스럽게 다듬기
    - 기계번역 느낌 제거 (직역체 → 한국어 자연스러운 표현)
    - 문장 길이 조절 (너무 긴 문장 분리)
-   - '~다', '~했다', '~이다' 평어체 일관성 유지
+   - 본문: '~다', '~했다', '~이다' 평어체 일관성 유지
+   - [COMMENT]~[/COMMENT] 구간: '~입니다', '~합니다' 존댓말 유지
    - 어색한 조사·어미 교정
 
 3. 애드센스 품질 기준
@@ -223,7 +224,8 @@ class GeminiEngine:
     def retranslate_content(self, content_ko: str) -> str:
         """일본어 잔존 시 재번역 (긴급용)"""
         prompt = f"""아래 한국어 본문(마크다운)에 일본어가 섞여 있습니다.
-일본어 부분만 자연스러운 한국어 평어체(~다, ~했다, ~이다)로 번역하고 전체 본문을 반환하세요.
+일본어 부분만 자연스러운 한국어로 번역하고 전체 본문을 반환하세요.
+본문은 평어체(~다, ~했다, ~이다), [COMMENT]~[/COMMENT] 구간은 존댓말(~입니다, ~합니다)로 번역하세요.
 ★중요★ 마크다운 구조(##, **, -, ![alt](url), <!--more-->)는 절대 깨지지 않게 유지하세요.
 본문만 출력:
 
@@ -563,11 +565,17 @@ draft: false
 
             noise_classes = [
                 'articleAside', 'mainLayout-side', 'articleShareSticky',
-                'articleShare', 'relatedKeyword', 'relatedArticle', 'prnbox'
+                'articleShare', 'relatedKeyword', 'relatedArticle'
             ]
             for noise_class in noise_classes:
                 for noise in content_div.find_all(class_=noise_class):
                     noise.decompose()
+
+            # prnbox(코멘트)는 [COMMENT] 마커로 감싸서 보존
+            for prnbox in content_div.find_all(class_='prnbox'):
+                prnbox.insert_before(NavigableString('\n[COMMENT]\n'))
+                prnbox.insert_after(NavigableString('\n[/COMMENT]\n'))
+                prnbox.unwrap()
 
             removed = False
             for mv_class in ['articleBody-mv', 'article-mv', 'post-thumbnail',
