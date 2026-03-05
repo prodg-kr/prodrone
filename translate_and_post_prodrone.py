@@ -33,7 +33,7 @@ PRONEWS_ARCHIVE_BASE   = "https://drone.jp/news/page"
 PRONEWS_BASE_URL       = "https://drone.jp"
 POSTED_ARTICLES_FILE   = "posted_articles_drone.json"
 FORCE_UPDATE           = os.environ.get("FORCE_UPDATE", "false").lower() == "true"
-DAILY_LIMIT            = 10
+DAILY_LIMIT            = 1
 ARCHIVE_MAX_PAGES      = 20
 
 # Hugo 사이트 레포 설정
@@ -120,13 +120,6 @@ class GeminiEngine:
         return ""
 
     def translate_article(self, title_ja: str, body_text: str, body_images: list = None) -> dict:
-        # 이미지 목록을 Markdown 형식으로 변환
-        images_md = ""
-        if body_images:
-            images_md = "\n\n=== 본문 이미지 목록 (적절한 위치에 삽입) ===\n"
-            for i, img in enumerate(body_images[:5], 1):
-                images_md += f"{i}. ![{img['alt']}]({img['url']})\n"
-
         prompt = f"""당신은 드론/카메라 전문 미디어의 한국어 에디터입니다.
 아래 일본어 기사를 한국어로 번역하여 JSON으로만 출력하세요.
 
@@ -135,7 +128,6 @@ class GeminiEngine:
 
 본문:
 {body_text[:15000]}
-{images_md}
 
 === 번역 규칙 ===
 1. 일본어(히라가나·가타카나·한자)를 완전히 한국어로 번역
@@ -143,18 +135,17 @@ class GeminiEngine:
 3. 브랜드명·모델명 원문 유지: Sony, Canon, Nikon, DJI, Blackmagic, Sigma 등
 4. 해상도: 4K, 8K, Full HD / 프레임레이트: fps, 24p, 60p
 5. 기계 번역 느낌 없이 사람이 쓴 듯 자연스럽게
-6. 이미지 목록이 있으면 본문 내 적절한 위치에 ![alt](url) 형식으로 삽입
 
 === 출력 JSON 규칙 ===
 - title: SEO 최적화 제목 (브랜드명·모델명 필수 포함, 최대 50자, 한국어만)
-- content: 번역 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록, ![](url) 이미지 사용, HTML 태그 사용 금지)
+- content: 번역 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록 사용, HTML 태그 사용 금지)
 - excerpt: 구글 스니펫용 요약 (80~100자, 평어체)
 - tldr: 핵심 요약 3~4항목을 Markdown 목록으로 (- 항목 형식)
 - 마크다운 백틱 없이 JSON만 출력
 
 {{
   "title": "SEO 제목",
-  "content": "## 소제목\\n\\n본문 단락\\n\\n![설명](https://example.com/image.jpg)\\n\\n## 소제목2\\n\\n본문",
+  "content": "## 소제목\\n\\n본문 단락\\n\\n## 소제목2\\n\\n본문",
   "excerpt": "요약문",
   "tldr": "- 요약1\\n- 요약2\\n- 요약3"
 }}"""
@@ -231,9 +222,9 @@ class GeminiEngine:
 
     def retranslate_content(self, content_ko: str) -> str:
         """일본어 잔존 시 재번역 (긴급용)"""
-        prompt = f"""아래 한국어 본문(HTML 포함)에 일본어가 섞여 있습니다.
-일본어 부분을 자연스러운 한국어 평어체(~다, ~했다, ~이다)로 번역하고 전체 본문을 반환하세요.
-★중요★ <img>, <figure> 등 모든 HTML 태그와 속성은 절대 건드리지 말고 그대로 유지할 것.
+        prompt = f"""아래 한국어 본문(마크다운)에 일본어가 섞여 있습니다.
+일본어 부분만 자연스러운 한국어 평어체(~다, ~했다, ~이다)로 번역하고 전체 본문을 반환하세요.
+★중요★ 마크다운 구조(##, **, -, ![alt](url), <!--more-->)는 절대 깨지지 않게 유지하세요.
 본문만 출력:
 
 {content_ko[:15000]}"""
@@ -292,8 +283,16 @@ class NewsTranslator:
                         featured_image_path: Path = None) -> bool:
         """Hugo Markdown 파일 생성 + GitHub push"""
         try:
-            # 게시 날짜는 항상 오늘(번역한 날)
-            date_str = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+09:00')
+            # 원문 날짜 유지 + KST 변환
+            from datetime import timezone, timedelta
+            KST = timezone(timedelta(hours=9))
+            dt = article_date
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=KST)
+            else:
+                dt = dt.astimezone(KST)
+            date_str = dt.strftime('%Y-%m-%dT%H:%M:%S%z')
+            date_str = date_str[:-2] + ":" + date_str[-2:]
 
             # 이미지 처리
             cover_image = ""
@@ -313,6 +312,7 @@ title: "{title.replace('"', "'")}"
 date: {date_str}
 slug: "{slug}"
 description: "{excerpt.replace('"', "'")}"
+summary: "{excerpt.replace('"', "'")}"
 {cover_block}
 draft: false
 ---
@@ -559,7 +559,7 @@ draft: false
                 soup.find('main')
             )
             if not content_div:
-                return "", None
+                return "", None, []
 
             noise_classes = [
                 'articleAside', 'mainLayout-side', 'articleShareSticky',
@@ -623,11 +623,39 @@ draft: false
             )):
                 elem.decompose()
 
+            # 본문 이미지 URL 수집 (a 태그 처리 전에 먼저)
+            body_images = []
+            for img in content_div.find_all('img'):
+                src = img.get('src') or img.get('data-src') or ''
+                if not src:
+                    srcset = img.get('srcset', '')
+                    if srcset:
+                        src = srcset.split(',')[-1].strip().split(' ')[0]
+                src = src.strip()
+                if src.startswith('//'):
+                    src = 'https:' + src
+                elif src.startswith('/'):
+                    src = urljoin(PRONEWS_BASE_URL, src)
+                if src and src.startswith('http') and any(
+                    ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+                ):
+                    alt = img.get('alt', '')
+                    body_images.append({'url': src, 'alt': alt})
+
             for a in list(content_div.find_all('a')):
-                href = a.get('href', '')
-                if any(kw in href.lower() for kw in
+                # 이미지 링크는 a만 벗기고 img 유지
+                if a.find('img'):
+                    a.unwrap()
+                    continue
+
+                href = (a.get('href') or '').lower()
+                if any(kw in href for kw in
                        ['facebook.com', 'twitter.com', 'line.me', '/fellowship/', 'hatena.ne.jp']) \
-                        or href.startswith('//') or not a.get_text(strip=True):
+                        or href.startswith('//'):
+                    a.decompose()
+                    continue
+
+                if not a.get_text(strip=True):
                     a.decompose()
 
             for tag_name in ['p', 'div', 'span', 'li']:
@@ -635,17 +663,11 @@ draft: false
                     if not tag.get_text(strip=True) and not tag.find('img'):
                         tag.decompose()
 
-            # 본문 이미지 URL 수집
-            body_images = []
-            for img in content_div.find_all('img'):
-                src = img.get('src', '') or img.get('data-src', '')
-                if src and src.startswith('http') and any(
-                    ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']
-                ):
-                    alt = img.get('alt', '')
-                    body_images.append({'url': src, 'alt': alt})
+            # HTML → 순수 텍스트 변환 (토큰 절약 + Markdown 생성 품질 향상)
+            plain_text = content_div.get_text("\n", strip=True)
+            plain_text = re.sub(r'\n{3,}', '\n\n', plain_text).strip()
 
-            return str(content_div), article_date, body_images
+            return plain_text, article_date, body_images
 
         except Exception as e:
             print(f"⚠️ 스크래핑 실패: {e}")
@@ -665,12 +687,20 @@ draft: false
             og = soup.find('meta', property='og:image')
             if og and og.get('content'):
                 return og['content']
-            content = soup.find('div', class_='entry-content')
+            content = (
+                soup.find('div', class_='post_content') or
+                soup.find('div', class_='entry-content')
+            )
             if content:
                 img = content.find('img')
-                if img and img.get('src'):
-                    src = img['src']
-                    return src if src.startswith('http') else urljoin(link, src)
+                if img:
+                    src = img.get('src') or img.get('data-src', '')
+                    if src:
+                        if src.startswith('//'):
+                            src = 'https:' + src
+                        elif src.startswith('/'):
+                            src = urljoin(link, src)
+                        return src
         except:
             pass
         return None
@@ -775,10 +805,29 @@ draft: false
             local_img = self.download_image(img_url)
 
         final_content = ""
+        # excerpt 1문단 + <!--more--> → 썸네일에 핵심요약 노출 방지
+        if excerpt:
+            final_content += f"{excerpt}\n\n<!--more-->\n\n"
         if tldr_html:
             final_content += "## 💡 핵심 요약\n\n"
             final_content += tldr_html.strip() + "\n\n"
             final_content += "---\n\n"
+
+        # 본문 이미지를 단락 사이에 균등 삽입 (이미 이미지 있으면 스킵)
+        if body_images and "![" not in content_ko:
+            paragraphs = content_ko.split('\n\n')
+            total = len(paragraphs)
+            imgs = body_images[:5]
+            # 본문 1/3, 2/3 지점에 이미지 삽입
+            insert_positions = sorted(set([
+                max(1, total // (len(imgs) + 1) * (i + 1))
+                for i in range(len(imgs))
+            ]), reverse=True)
+            for pos, img in zip(insert_positions, reversed(imgs)):
+                img_md = f"\n\n![{img['alt']}]({img['url']})\n\n"
+                paragraphs.insert(min(pos, len(paragraphs)), img_md)
+            content_ko = '\n\n'.join(paragraphs)
+
         final_content += content_ko
         final_content += (
             "\n\n---\n\n"

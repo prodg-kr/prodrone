@@ -1,0 +1,67 @@
+{{- define "main" }}
+{{- $allPages := where site.RegularPages "Type" "posts" }}
+{{- $allPages = sort $allPages "Date" "desc" }}
+{{- $paginator := .Paginate $allPages }}
+{{- $pages := $paginator.Pages }}
+{{- $hero := index $pages 0 }}
+{{- $rest := after 1 $pages }}
+
+<div class="home-wrap">
+
+  {{/* 히어로 카드 */}}
+  {{- if $hero }}
+  <div class="hero-card">
+    <a href="{{ $hero.Permalink }}" class="hero-link">
+      {{- with $hero.Params.cover }}
+      {{- $img := .image }}
+      {{- if $img }}
+      <div class="hero-image">
+        <img src="{{ $img | absURL }}" alt="{{ $hero.Title }}" loading="lazy">
+      </div>
+      {{- end }}
+      {{- end }}
+      <div class="hero-body">
+        <span class="cat-badge">뉴스</span>
+        <h2 class="hero-title">{{ $hero.Title }}</h2>
+        <p class="hero-summary">{{ $hero.Params.summary | default ($hero.Summary | plainify | truncate 120) }}</p>
+        <time class="article-date">{{ $hero.Date.Format "2006.01.02" }}</time>
+      </div>
+    </a>
+  </div>
+  {{- end }}
+
+  {{/* 기사 그리드 */}}
+  {{- if $rest }}
+  <div class="article-grid">
+    {{- range $rest }}
+    <article class="card">
+      <a href="{{ .Permalink }}" class="card-link">
+        {{- with .Params.cover }}
+        {{- $img := .image }}
+        {{- if $img }}
+        <div class="card-image">
+          <img src="{{ $img | absURL }}" alt="{{ .Title }}" loading="lazy">
+        </div>
+        {{- end }}
+        {{- end }}
+        <div class="card-body">
+          <span class="cat-badge">뉴스</span>
+          <h2 class="card-title">{{ .Title }}</h2>
+          <p class="card-summary">{{ .Params.summary | default (.Summary | plainify | truncate 80) }}</p>
+          <time class="article-date">{{ .Date.Format "2006.01.02" }}</time>
+        </div>
+      </a>
+    </article>
+    {{- end }}
+  </div>
+  {{- end }}
+
+  {{/* 페이지네이션 */}}
+  {{- if gt $paginator.TotalPages 1 }}
+  <div class="pagination-wrap">
+    {{- template "_internal/pagination.html" . }}
+  </div>
+  {{- end }}
+
+</div>
+{{- end }}
