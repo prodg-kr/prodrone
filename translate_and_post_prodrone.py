@@ -763,6 +763,15 @@ draft: false
             pass
         return None
 
+    def normalize_img_url(self, url: str) -> str:
+        """이미지 URL 정규화.
+        현재: http:// → https:// 보정 (mixed content 방지)
+        나중에 R2/CDN 전환 시 이 함수만 수정하면 됨.
+        """
+        if url.startswith('http://'):
+            url = 'https://' + url[7:]
+        return url
+
     def download_image(self, url: str):
         if not url:
             return None
@@ -894,7 +903,7 @@ draft: false
                 for i in range(len(imgs))
             ]), reverse=True)
             for pos, img in zip(insert_positions, reversed(imgs)):
-                img_md = f"\n\n![{img['alt']}]({img['url']})\n\n"
+                img_md = f"\n\n![{img['alt']}]({self.normalize_img_url(img['url'])})\n\n"
                 paragraphs.insert(min(pos, len(paragraphs)), img_md)
             content_ko = '\n\n'.join(paragraphs)
 
