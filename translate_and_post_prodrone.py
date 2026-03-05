@@ -857,6 +857,12 @@ draft: false
 
         print(f"📤 [3단계] Hugo MD 파일 생성 + GitHub push 중...")
 
+        # [COMMENT]~[/COMMENT] 마커를 따옴표로 변환 (자연스러운 인용문 표시)
+        final_content = re.sub(r'\s*\[COMMENT\]\s*', '\n\n"', final_content)
+        final_content = re.sub(r'\s*\[/COMMENT\]\s*', '"\n\n', final_content)
+        final_content = re.sub(r'\n{3,}', '\n\n', final_content).strip()
+
+
         if self.publish_to_hugo(title_ko, final_content, slug, excerpt,
                                 article['date'], local_img):
             if local_img:
