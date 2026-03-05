@@ -849,7 +849,7 @@ draft: false
 
     def run(self):
         print(f"\n{'='*60}")
-        print(f"DRONE.jp → prodrone.kr 자동 번역 v9.0.0")
+        print(f"DRONE.jp → proDRONE.kr 자동 번역 v9.0.0")
         print(f"엔진: {GEMINI_MODEL} | 호출: 기사당 1회 JSON 통합")
         print(f"모드: {'자동 (최신→아카이브 보충)' if IS_SCHEDULED else '수동 (아카이브 오래된 순)'}")
         print(f"발행: Hugo MD → GitHub push | 일일 한도: {DAILY_LIMIT}건")

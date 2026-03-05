@@ -2,7 +2,7 @@ baseURL = "https://prodrone.kr"
 languageCode = "ko-KR"
 defaultContentLanguage = "ko"
 defaultContentLanguageInSubdir = false
-title = "ProDrone.kr"
+title = "proDRONE.kr"
 theme = "PaperMod"
 
 [pagination]
