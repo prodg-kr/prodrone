@@ -33,7 +33,7 @@ PRONEWS_ARCHIVE_BASE   = "https://drone.jp/news/page"
 PRONEWS_BASE_URL       = "https://drone.jp"
 POSTED_ARTICLES_FILE   = "posted_articles_drone.json"
 FORCE_UPDATE           = os.environ.get("FORCE_UPDATE", "false").lower() == "true"
-DAILY_LIMIT            = 1
+DAILY_LIMIT            = 10
 ARCHIVE_MAX_PAGES      = 20
 
 # Hugo 사이트 레포 설정
