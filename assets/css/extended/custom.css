@@ -211,3 +211,65 @@ body, .post-title, .entry-header, h1, h2, h3 {
   margin-top: 48px;
   text-align: center;
 }
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 48px 0 64px;
+  flex-wrap: wrap;
+}
+
+.pagination a,
+.pagination span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 48px;
+  padding: 0 18px;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'Pretendard', sans-serif;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-primary);
+}
+
+.pagination a:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 87, 255, 0.25);
+}
+
+.pagination .active,
+.pagination span.current {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+/* 이전/다음 버튼 */
+.pagination a:first-child,
+.pagination a:last-child {
+  padding: 0 20px;
+  font-size: 16px;
+}
+
+/* 모바일 */
+@media (max-width: 600px) {
+  .pagination a,
+  .pagination span {
+    min-width: 44px;
+    height: 44px;
+    font-size: 14px;
+    padding: 0 12px;
+  }
+}
