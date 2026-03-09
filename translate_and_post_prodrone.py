@@ -731,46 +731,12 @@ draft: false
                 continue
         return results
 
-    # 한국어 키워드 → 영어 slug 매핑 (드론/카메라 도메인 특화)
-    KO_SLUG_MAP = {
-        '드론': 'drone', '산업용': 'industrial', '카메라': 'camera',
-        '뉴스': 'news', '출시': 'release', '발표': 'announce',
-        '신제품': 'new-product', '가격': 'price', '스펙': 'spec',
-        '리뷰': 'review', '비행': 'flight', '배터리': 'battery',
-        '충전': 'charge', '규제': 'regulation', '법률': 'law',
-        '농업': 'agriculture', '물류': 'logistics', '배송': 'delivery',
-        '자율': 'autonomous', '인공지능': 'ai', '영상': 'video',
-        '촬영': 'filming', '소형': 'mini', '대형': 'large',
-        '군사': 'military', '방위': 'defense', '안전': 'safety',
-        '점검': 'inspection', '측량': 'survey', '지도': 'map',
-        '레이싱': 'racing', '취미': 'hobby', '입문': 'beginner',
-        '모터': 'motor', '프레임': 'frame', '조종': 'control',
-        '센서': 'sensor', '라이다': 'lidar', '레이더': 'radar',
-        '소프트웨어': 'software', '플랫폼': 'platform', '시스템': 'system',
-        '분석': 'analysis', '데이터': 'data', '클라우드': 'cloud',
-        '협력': 'partnership', '계약': 'contract', '투자': 'investment',
-        '시장': 'market', '성장': 'growth', '전망': 'outlook',
-    }
-
     def generate_seo_slug(self, title_ko: str, article_date: datetime) -> str:
-        slug = title_ko
-        # 1) 한국어 키워드 → 영어 치환
-        for ko, en in self.KO_SLUG_MAP.items():
-            slug = slug.replace(ko, f' {en} ')
-        # 2) 영숫자만 남기기
-        slug = re.sub(r'[^a-zA-Z0-9\s]', ' ', slug)
-        slug = slug.lower().strip()
-        slug = re.sub(r'\s+', '-', slug)
+        slug = re.sub(r'[^a-zA-Z0-9\s]', '', title_ko)
+        slug = slug.lower().strip().replace(' ', '-')
         slug = re.sub(r'-+', '-', slug).strip('-')
-        # 3) 연속 중복 토큰 제거 (예: ai-ai → ai)
-        parts = slug.split('-')
-        deduped = [parts[0]] if parts else []
-        for p in parts[1:]:
-            if p != deduped[-1]:
-                deduped.append(p)
-        slug = '-'.join(deduped)
         date_str = article_date.strftime('%Y%m%d') if article_date else datetime.now().strftime('%Y%m%d')
-        return f"{slug[:50]}-{date_str}" if len(slug) >= 3 else f"drone-news-{date_str}"
+        return f"{slug[:50]}-{date_str}" if len(slug) >= 3 else f"news-{date_str}"
 
     def get_main_image_url(self, link: str):
         try:
@@ -1016,7 +982,7 @@ draft: false
                 if self.process_article(article):
                     success += 1
                 if i < len(articles):
-                    time.sleep(10)
+                    time.sleep(15)
         finally:
             print(f"\n{'='*60}")
             print(f"🏁 완료: {success}/{len(articles)}건 게시")
