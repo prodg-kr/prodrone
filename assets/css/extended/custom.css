@@ -263,13 +263,14 @@ body, .post-title, .entry-header, h1, h2, h3 {
   font-size: 16px;
 }
 
+
 /* 모바일 */
 @media (max-width: 600px) {
   .pagination a,
   .pagination span {
-    min-width: 44px;
-    height: 44px;
-    font-size: 14px;
-    padding: 0 12px;
+    min-width: 36px;
+    height: 36px;
+    font-size: 13px;
+    padding: 0 8px;
   }
 }
