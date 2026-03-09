@@ -208,69 +208,71 @@ body, .post-title, .entry-header, h1, h2, h3 {
 
 /* ===== 페이지네이션 ===== */
 .pagination-wrap {
-  margin-top: 48px;
+  margin: 48px 0 64px;
   text-align: center;
 }
 
 .pagination {
-  display: flex;
-  justify-content: center;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin: 48px 0 64px;
-  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: var(--shadow);
 }
 
-.pagination a,
-.pagination span {
+.page-item .page-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 48px;
-  height: 48px;
-  padding: 0 18px;
-  border-radius: var(--radius);
-  font-size: 15px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 14px;
   font-weight: 600;
   font-family: 'Pretendard', sans-serif;
   text-decoration: none;
-  transition: all 0.2s ease;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.18s ease;
 }
 
-.pagination a:hover {
+.page-item .page-link:hover {
   background: var(--accent);
   color: #fff;
-  border-color: var(--accent);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 87, 255, 0.25);
+  transform: translateY(-1px);
 }
 
-.pagination .active,
-.pagination span.current {
+.page-item.active .page-link {
   background: var(--accent);
   color: #fff;
-  border-color: var(--accent);
   font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 87, 255, 0.35);
 }
 
-/* 이전/다음 버튼 */
-.pagination a:first-child,
-.pagination a:last-child {
-  padding: 0 20px;
-  font-size: 16px;
+.page-item.disabled .page-link {
+  color: var(--border);
+  cursor: not-allowed;
+  pointer-events: none;
 }
-
 
 /* 모바일 */
 @media (max-width: 600px) {
-  .pagination a,
-  .pagination span {
-    min-width: 36px;
-    height: 36px;
+  .pagination {
+    gap: 2px;
+    padding: 4px;
+  }
+  .page-item .page-link {
+    width: 32px;
+    height: 32px;
     font-size: 13px;
-    padding: 0 8px;
+    border-radius: 6px;
   }
 }
