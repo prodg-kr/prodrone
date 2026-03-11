@@ -27,7 +27,7 @@ proDRONE.kr에 대한 문의사항은 아래 이메일로 연락 주시기 바�
 
 ## 연락처
 
-📧 이메일: **contact@prodrone.kr**
+📧 이메일: **prodg.kr@gmail.com**
 
 답변은 영업일 기준 2~3일 내에 드립니다.
 
