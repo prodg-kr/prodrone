@@ -32,3 +32,19 @@ theme = "PaperMod"
     name = "홈"
     url = "/"
     weight = 1
+  [[menu.main]]
+    name = "소개"
+    url = "/about/"
+    weight = 2
+  [[menu.main]]
+    name = "문의"
+    url = "/contact/"
+    weight = 3
+  [[menu.main]]
+    name = "개인정보처리방침"
+    url = "/privacy/"
+    weight = 4
+  [[menu.main]]
+    name = "이용약관"
+    url = "/terms/"
+    weight = 5
