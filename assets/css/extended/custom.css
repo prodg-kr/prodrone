@@ -266,13 +266,45 @@ body, .post-title, .entry-header, h1, h2, h3 {
 /* 모바일 */
 @media (max-width: 600px) {
   .pagination {
-    gap: 2px;
-    padding: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    background: #f5f5f7;
+    border-radius: 999px;
   }
+
   .page-item .page-link {
-    width: 32px;
-    height: 32px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 999px;
     font-size: 13px;
-    border-radius: 6px;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    color: #555;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.1s ease;
+  }
+
+  .page-item .page-link:hover {
+    background: #e4e4ea;
+    color: #222;
+  }
+
+  .page-item.active .page-link {
+    background: #111827;
+    color: #fff;
+  }
+
+  .page-item.disabled .page-link {
+    opacity: 0.4;
+    pointer-events: none;
   }
 }
+
