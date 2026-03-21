@@ -5,9 +5,7 @@
 {{- $pages := $paginator.Pages }}
 {{- $hero := index $pages 0 }}
 {{- $rest := after 1 $pages }}
-
 <div class="home-wrap">
-
   {{/* 히어로 카드 */}}
   {{- if $hero }}
   <div class="hero-card">
@@ -29,7 +27,6 @@
     </a>
   </div>
   {{- end }}
-
   {{/* 기사 그리드 */}}
   {{- if $rest }}
   <div class="article-grid">
@@ -55,13 +52,11 @@
     {{- end }}
   </div>
   {{- end }}
-
   {{/* 페이지네이션 */}}
   {{- if gt $paginator.TotalPages 1 }}
   <div class="pagination-wrap">
     {{- template "_internal/pagination.html" . }}
   </div>
   {{- end }}
-
 </div>
 {{- end }}
