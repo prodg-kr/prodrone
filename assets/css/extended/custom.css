@@ -230,8 +230,10 @@ body, .post-title, .entry-header, h1, h2, h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 39px;
+  min-width: 36px;
+  width: auto;
   height: 36px;
+  padding: 0 10px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
