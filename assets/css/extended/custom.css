@@ -230,7 +230,7 @@ body, .post-title, .entry-header, h1, h2, h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: 39px;
   height: 36px;
   border-radius: 8px;
   font-size: 12px;
@@ -270,7 +270,7 @@ body, .post-title, .entry-header, h1, h2, h3 {
     padding: 4px;
   }
   .page-item .page-link {
-    width: 32px;
+    width: 36px;
     height: 32px;
     font-size: 13px;
     border-radius: 6px;
