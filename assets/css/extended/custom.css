@@ -233,7 +233,7 @@ body, .post-title, .entry-header, h1, h2, h3 {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   font-family: 'Pretendard', sans-serif;
   text-decoration: none;
@@ -291,7 +291,7 @@ body, .post-title, .entry-header, h1, h2, h3 {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   font-family: 'Pretendard', sans-serif;
   color: var(--text-secondary);
