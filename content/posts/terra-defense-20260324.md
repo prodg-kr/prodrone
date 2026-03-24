@@ -35,8 +35,6 @@ draft: false
 
 ### 1. 'Terra Defense' 설립 및 글로벌 물류망 구축
 
-![](https://drone.jp/wp-content/uploads/terra_defense02.webp)
-
 국제적인 방위 수요에 신속하고 유연하게 대응하기 위해 수출입 및 기술 협력을 담당할 미국 법인 'Terra Defense'를 2026 회계연도 내 설립한다. 이를 통해 방위 자산의 수출입 및 물류 효율성을 극대화한다.
 
 ### 2. 단계적인 글로벌 시장 전개
