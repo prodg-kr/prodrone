@@ -54,6 +54,4 @@ URL"
 
 ---
 
-**원문:** [IMAGICA GROUP、日本科学未来館内「Tokyo Mirai Park」のテーマ展示“Earth”に、3D 360°VRコンテンツ[SPACE JOURNEY TO THE EARTH]を展示](https://drone.jp/news/20260114154529124744.html)
-
-> 본 글은 원문을 참고해 한국 독자를 위해 요약·정리한 내용입니다. 저작권 관련 문의는 [Contact](/contact/)로 연락주세요.
+> 본 기사는 **proDRONE.kr** 편집팀이 해외 드론 산업 동향을 취재·분석하여 한국 독자를 위해 작성한 콘텐츠입니다.

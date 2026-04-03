@@ -60,6 +60,4 @@ Archer Fiber는 실제 전장 환경을 염두에 두고 설계된 안전성과 
 
 ---
 
-**원문:** [Neros TechnologiesとKela Technologies、世界初のNDAA準拠ファイバー光学FPVドローン「Archer Fiber」を発表。予約受付開始](https://drone.jp/news/20251217150014123493.html)
-
-> 본 글은 원문을 참고해 한국 독자를 위해 요약·정리한 내용입니다. 저작권 관련 문의는 [Contact](/contact/)로 연락주세요.
+> 본 기사는 **proDRONE.kr** 편집팀이 해외 드론 산업 동향을 취재·분석하여 한국 독자를 위해 작성한 콘텐츠입니다.

@@ -65,6 +65,4 @@ GMO Cybersecurity by Ierae와 Synspective가 2025년 12월 8일, 위성 시스�
 
 ---
 
-**원문:** [GMOサイバーセキュリティ by IeraeとSynspective、「衛星サイバーセキュリティ」に関する共同研究を開始](https://drone.jp/news/20251208182525122918.html)
-
-> 본 글은 원문을 참고해 한국 독자를 위해 요약·정리한 내용입니다. 저작권 관련 문의는 [Contact](/contact/)로 연락주세요.
+> 본 기사는 **proDRONE.kr** 편집팀이 해외 드론 산업 동향을 취재·분석하여 한국 독자를 위해 작성한 콘텐츠입니다.

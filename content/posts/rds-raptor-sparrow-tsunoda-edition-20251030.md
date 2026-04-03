@@ -81,6 +81,4 @@ Sparrow는 FIM 슈퍼바이크 세계 선수권에 참가하는 MIE Racing과의
 
 ---
 
-**원문:** [RDS、ジャパンモビリティショーでRaptor角田裕毅モデル「Sparrow Tsunoda Edition」初公開](https://drone.jp/news/20251030151519121316.html)
-
-> 본 글은 원문을 참고해 한국 독자를 위해 요약·정리한 내용입니다. 저작권 관련 문의는 [Contact](/contact/)로 연락주세요.
+> 본 기사는 **proDRONE.kr** 편집팀이 해외 드론 산업 동향을 취재·분석하여 한국 독자를 위해 작성한 콘텐츠입니다.
