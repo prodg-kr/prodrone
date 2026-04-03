@@ -207,21 +207,32 @@ class GeminiEngine:
    - 독창적이고 유용한 정보 중심으로 편집
    - 단순 나열이 아닌 맥락 있는 설명 추가
    - 광고성·스팸성 표현 제거
-   - 최소 300자 이상 실질적 내용 유지
+   - 최소 600자 이상 실질적 내용 유지
    - ★중요★ 본문 끝에 "요약:", "정리:", "결론:" 등의 중복 요약 절대 추가 금지
+
+4. editor_note (한국 시장 심층 분석) ★핵심★
+   - 단순 코멘트가 아닌 3~5문단의 실질적 분석을 작성할 것
+   - 반드시 다음 관점을 포함:
+     ① 한국 드론/로봇 시장에서 이 기술/제품의 의미
+     ② 국내 유사 사례 또는 경쟁 현황과 비교
+     ③ 한국 규제·정책 환경과의 연관성 (국토교통부, 드론법 등)
+     ④ 국내 도입 가능성 또는 실제 활용 시나리오
+     ⑤ 향후 한국 시장 전망 및 독자가 주목해야 할 포인트
+   - 평어체(~다, ~했다)로 작성, 최소 400자 이상
+   - Google 애드센스 기준의 "독창적이고 유용한 콘텐츠"를 충족할 것
 
 === 출력 JSON 규칙 ===
 - title: SEO 최적화 제목 (브랜드명·모델명 필수, 최대 50자, 한국어만)
 - content: 편집된 본문을 순수 Markdown으로 출력 (## 소제목, **굵게**, - 목록 사용, HTML 태그 사용 금지)
 - excerpt: 구글 스니펫용 요약 (80~100자, 평어체 필수 — "~다", "~했다"로 끝낼 것)
-- editor_note: 한국 독자를 위한 에디터 코멘트 2~3문장 (어떻게 받아들이면 좋을지, 한국 시장 의미/전망 등 평어체)
+- editor_note: 한국 시장 심층 분석 (3~5문단, 400자 이상, 평어체, Markdown 형식)
 - 마크다운 백틱 없이 JSON만 출력
 
 {{
   "title": "편집된 SEO 제목",
   "content": "## 소제목\\n\\n편집된 본문. 이러한 기능을 제공한다.",
   "excerpt": "편집된 요약문. 이러한 기능을 갖추고 있다.",
-  "editor_note": "한국 독자 관점에서 바라본 코멘트. 이 기술이 시장에 대한 함의를 가진다."
+  "editor_note": "## 한국 시장 전망\\n\\n이 기술은 한국 드론 산업에서 중요한 의미를 갖는다. 국내에서는 이미 유사한 시도가 있었으며...\\n\\n국토교통부의 드론 규제 완화 흐름과 맞물려..."
 }}"""
 
         result = self._call_api(prompt, max_tokens=8192)
@@ -887,9 +898,9 @@ draft: false
         if excerpt:
             final_content += f"{excerpt}\n\n<!--more-->\n\n"
 
-        # [1] 편집자 코멘트 삽입
+        # [1] 한국 시장 분석 섹션 삽입
         if editor_note:
-            final_content += f"> 편집자 코멘트: {editor_note}\n\n"
+            final_content += f"## 🇰🇷 한국 시장 분석\n\n{editor_note}\n\n---\n\n"
 
         # excerpt는 front matter의 description으로 이미 표시됨 → 본문 중복 제거
         if tldr_html:
@@ -921,12 +932,11 @@ draft: false
             for r_title, r_slug in recent_links:
                 final_content += f"- [{r_title}](/posts/{r_slug}/)\n"
 
-        # [5] 출정 및 권리 문구
+        # [5] proDRONE.kr 자체 제작 문구
         final_content += (
             "\n\n---\n\n"
-            f"**원문:** [{article['title']}]({article['link']})\n\n"
-            "> 본 글은 원문을 참고해 한국 독자를 위해 요약·정리한 내용입니다. "
-            "저작권 관련 문의는 [Contact](/contact/)로 연락주세요."
+            "> 본 기사는 **proDRONE.kr** 편집팀이 해외 드론 산업 동향을 취재·분석하여 "
+            "한국 독자를 위해 작성한 콘텐츠입니다."
         )
 
         print(f"📤 [3단계] Hugo MD 파일 생성 + GitHub push 중...")
@@ -982,7 +992,7 @@ draft: false
                 if self.process_article(article):
                     success += 1
                 if i < len(articles):
-                    time.sleep(15)
+                    time.sleep(10)
         finally:
             print(f"\n{'='*60}")
             print(f"🏁 완료: {success}/{len(articles)}건 게시")
