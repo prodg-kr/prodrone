@@ -1,0 +1,30 @@
+name: 기존 게시글 문구 일괄 수정
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-posts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 문구 일괄 치환 실행
+        run: python fix_posts.py
+
+      - name: 변경사항 커밋 및 푸시
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add content/posts/
+          git diff --cached --quiet || git commit -m "chore: 기존 게시글 출처 문구 일괄 수정"
+          git push
