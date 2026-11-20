@@ -37,7 +37,7 @@ DAILY_LIMIT            = 10
 ARCHIVE_MAX_PAGES      = 20
 
 # Hugo 사이트 레포 설정
-HUGO_SITE_REPO         = os.environ.get("HUGO_SITE_REPO", "prodg-kr/prodrone")
+HUGO_SITE_REPO         = os.environ.get("HUGO_SITE_REPO", "prodgkr/prodrone")
 GITHUB_TOKEN           = os.environ.get("GITHUB_TOKEN")
 HUGO_REPO_LOCAL        = Path("/tmp/prodrone-site")
 
