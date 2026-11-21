@@ -53,6 +53,11 @@ jobs:
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
+        with:
+          # 전체 히스토리를 받아야 `git pull --rebase origin main`이
+          # 브랜치 테스트에서도 merge base를 찾는다. 얕은 clone이면
+          # 브랜치 자체 커밋을 main 위에 얹으려다 add/add 충돌이 난다.
+          fetch-depth: 0
 
       - name: Python 설정
         uses: actions/setup-python@v5
