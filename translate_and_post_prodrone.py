@@ -1,12 +1,32 @@
 #!/usr/bin/env python3
 """
-DRONE.jp 자동 번역 시스템 v9.3.0
+DRONE.jp 자동 번역 시스템 v9.4.0
 파이프라인: 일본어 원문 → Gemini 번역 → Gemini 편집 → Hugo Markdown → GitHub Push
 
-v9.2.0 → v9.3.0 변경사항:
-- 본문 출력 형식: HTML → 순수 Markdown (raw HTML omitted 문제 완전 해결)
-- tldr: <ul><li> HTML → - 마크다운 목록
-- 제목 한국어 전용 강제 (일본어 잔존 방지)
+================================================================
+v9.4.0 부분 수정 변경 요약 (2026-11-21, 감사 보고서 action-code-audit-2026-11-21.md 기반)
+전면 재작성이 아니라 감사 지적만 수정했다. 그 외 동작은 v9.3.0과 동일하다.
+----------------------------------------------------------------
+[수정된 감사 지적]
+- §3-2  슬러그 충돌 시 기존 MD 파일 무단 덮어쓰기 금지: 쓰기 전 파일 존재 검사.
+         같은 원문 URL 재처리는 덮어쓰기 허용, 다른 글이면 -2/-3 suffix 부여.
+         판정용으로 front matter에 source_url을 신규 기록한다.
+- §3-4  중복 방지 2단계 추가: 1단계 posted JSON + 2단계 MD front matter의
+         source_url 대조. posted JSON 손상 시 빈 리스트 반환 금지 → 에러 + exit 1.
+         (2단계는 v9.4.0 이후 발행 글부터 유효 — 기존 파일엔 source_url이 없다.)
+- §3-3  0건 출력 런은 exit 1로 실패 처리 (처리 대상이 있었는데 성공 0건).
+         단, 수집 소스가 정상인데 신규 기사가 없는 날(토요일 등)은 정상 종료.
+- §3-5  동시 실행 방지: 워크플로우 concurrency guard (auto-translate_prodrone.yml 참조).
+- §3-14 front matter 제목·요약·cover alt의 개행 제거 (YAML 파손 방지).
+[연관 수정]
+- §3-9  Hugo 레포 클론/풀 실패 시 경고만 하고 계속하지 않고 exit 1 (빠른 실패).
+- 버전 표기 단일화: v9.4.0 (헤더·실행 배너 동일). 배너 문구도 실제 동작에 맞게 수정.
+- 데드 코드 제거: commit_posted_articles (호출 0회 — 실제 커밋은 워크플로우 담당).
+[미수정 — 별도 결정 필요]
+- §3-8  최근 글 내부링크 mtime 정렬, §3-12 RSS entry.link try 밖,
+  §3-13 본문 정제 content_div 가드는 이번 범위에 포함되지 않았다.
+  REWRITE_NOTES.md 참조.
+================================================================
 """
 
 import os
@@ -38,17 +58,33 @@ ARCHIVE_MAX_PAGES      = 20
 
 # Hugo 사이트 레포 설정
 HUGO_SITE_REPO         = os.environ.get("HUGO_SITE_REPO", "prodgkr/prodrone")
+# Step 3 (owner chose option B): isolated preview-branch test.
+# The branch to clone and push Hugo posts to. "main" = live behaviour.
+HUGO_TARGET_BRANCH     = os.environ.get("HUGO_TARGET_BRANCH", "main").strip() or "main"
 GITHUB_TOKEN           = os.environ.get("GITHUB_TOKEN")
 HUGO_REPO_LOCAL        = Path("/tmp/prodrone-site")
 
 # 실행 모드 감지
-GITHUB_EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME", "workflow_dispatch")
-IS_SCHEDULED      = GITHUB_EVENT_NAME == "schedule"
+# RUN_MODE_OVERRIDE: 워크플로우 입력(event_name_override)으로 스케줄 경로를
+# 브랜치에서 시험할 때 사용. GitHub Actions는 기본 GITHUB_* 환경 변수의
+# 덮어쓰기를 무시하므로 GITHUB_EVENT_NAME을 직접 바꾸는 방식은 동작하지 않는다.
+# (재검수 1번) 비어 있으면 실제 이벤트명(schedule/workflow_dispatch)을 쓴다.
+EFFECTIVE_EVENT = os.environ.get("RUN_MODE_OVERRIDE", "").strip() or os.environ.get("GITHUB_EVENT_NAME", "workflow_dispatch")
+IS_SCHEDULED = EFFECTIVE_EVENT == "schedule"
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 # 단일 URL 1개만 처리할 때 사용 (예: https://drone.jp/news/...)
 TARGET_URL  = os.environ.get("TARGET_URL", "").strip()
+
+# 배포 검증(C1) — 이번 런에 새로 발행한 글의 라이브 URL 확인
+PRODRONE_SITE_URL = "https://prodrone.kr"
+# Step 3 (option B): verify against this base URL instead of the hard-coded
+# production site, so a preview-branch deployment can be verified.
+# Default is PRODRONE_SITE_URL — identical behaviour when unset.
+DEPLOY_VERIFY_BASE_URL = os.environ.get("DEPLOY_VERIFY_BASE_URL", PRODRONE_SITE_URL).strip() or PRODRONE_SITE_URL
+DEPLOY_VERIFY_TIMEOUT = 600   # 초 (Cloudflare Pages 빌드·배포 지연 감안)
+DEPLOY_VERIFY_INTERVAL = 30   # 초
 
 
 # ==========================================
@@ -63,7 +99,7 @@ class GeminiEngine:
         self.last_call_time  = 0.0
         self.rate_limit_hit  = False
 
-    def _call_api(self, prompt: str, max_tokens: int = 8192) -> str:
+    def _call_api(self, prompt: str, max_tokens: int = 8192, response_mime_type: str = None) -> str:
         if self.rate_limit_hit:
             return ""
 
@@ -72,22 +108,29 @@ class GeminiEngine:
             time.sleep(7 - elapsed)
         self.last_call_time = time.time()
 
+        # M7: API 키를 URL 쿼리가 아닌 x-goog-api-key 헤더로 보낸다.
+        # 쿼리에 두면 예외 메시지에 URL이 포함될 때 키가 로그에 찍힌다.
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{GEMINI_MODEL}:generateContent?key={self.api_key}"
+            f"{GEMINI_MODEL}:generateContent"
         )
+        headers = {"x-goog-api-key": self.api_key}
+        generation_config = {
+            "maxOutputTokens": max_tokens,
+            "temperature": 0.4
+        }
+        if response_mime_type:
+            # JSON 출력 호출에만 지정한다. plain-text 재번역·보강 호출에는 쓰지 않는다.
+            generation_config["responseMimeType"] = response_mime_type
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "maxOutputTokens": max_tokens,
-                "temperature": 0.4
-            }
+            "generationConfig": generation_config
         }
 
         backoff = [15, 30, 60]
         for attempt in range(3):
             try:
-                res = requests.post(url, json=payload, timeout=120)
+                res = requests.post(url, json=payload, headers=headers, timeout=120)
 
                 if res.status_code == 429:
                     wait = backoff[min(attempt, len(backoff) - 1)]
@@ -156,7 +199,9 @@ class GeminiEngine:
   "tldr": "- 요약1이다\\n- 요약2됐다\\n- 요약3한다"
 }}"""
 
-        result = self._call_api(prompt, max_tokens=8192)
+        # JSON 출력이므로 responseMimeType을 application/json으로 지정한다
+        # (토큰 한도로 잘린 경우 같은 프롬프트 재시도는 또 잘리므로, 애초에 JSON으로 받는다).
+        result = self._call_api(prompt, max_tokens=8192, response_mime_type="application/json")
         if not result:
             return {}
 
@@ -235,7 +280,8 @@ class GeminiEngine:
   "editor_note": "## 한국 시장 전망\\n\\n이 기술은 한국 드론 산업에서 중요한 의미를 갖는다. 국내에서는 이미 유사한 시도가 있었으며...\\n\\n국토교통부의 드론 규제 완화 흐름과 맞물려..."
 }}"""
 
-        result = self._call_api(prompt, max_tokens=8192)
+        # JSON 출력이므로 responseMimeType을 application/json으로 지정한다.
+        result = self._call_api(prompt, max_tokens=8192, response_mime_type="application/json")
         if not result:
             return {}
         try:
@@ -283,6 +329,39 @@ class NewsTranslator:
         self.gemini          = GeminiEngine()
         self.posted_articles = self.load_posted_articles()
         self.setup_hugo_repo()
+        # 2단계 중복 방지용: 기존 MD의 source_url 집합 (v9.4.0 이후 발행 글부터 유효)
+        self.published_sources = self.scan_published_sources()
+        # 수집 소스 상태 (§3-3: 소스 전부 실패 시 런 실패 처리용)
+        self._rss_ok = True
+        self._archive_ok = True
+        # C1: 이번 런에 새로 발행한 글의 슬러그 (배포 검증용)
+        self.new_post_slugs = []
+
+    def scan_published_sources(self) -> set:
+        """content/posts/*.md front matter에서 source_url을 수집한다. (§3-4 2단계)"""
+        sources = set()
+        posts_dir = HUGO_REPO_LOCAL / "content/posts"
+        if not posts_dir.exists():
+            return sources
+        for f in posts_dir.glob("*.md"):
+            try:
+                text = f.read_text(encoding='utf-8')
+                m = re.search(r'^source_url:\s*"?([^"\n]+)"?\s*$', text, re.MULTILINE)
+                if m:
+                    sources.add(m.group(1).strip())
+            except Exception:
+                continue
+        print(f"📋 기존 발행 원문 URL {len(sources)}건 스캔 완료 (2단계 중복 방지)")
+        return sources
+
+    def is_already_published(self, original_url: str) -> bool:
+        """2단계 중복 검사: posted JSON(1단계) + MD source_url(2단계)."""
+        if not FORCE_UPDATE and original_url in self.posted_articles:
+            return True
+        if not FORCE_UPDATE and original_url in self.published_sources:
+            print(f"⚠️ 중복 감지 (MD source_url) → 스킵: {original_url}")
+            return True
+        return False
 
     def setup_hugo_repo(self):
         """Hugo 사이트 레포를 로컬에 클론"""
@@ -297,30 +376,82 @@ class NewsTranslator:
                 subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "pull"], check=True)
             else:
                 repo_url = f"https://x-access-token:{GITHUB_TOKEN}@github.com/{HUGO_SITE_REPO}.git"
-                subprocess.run(["git", "clone", repo_url, str(HUGO_REPO_LOCAL)], check=True)
+                # Step 3 (option B): clone the target branch for an isolated
+                # preview test. When the target is "main" the command is
+                # exactly the current one (no --branch flag) — behaviour
+                # byte-for-byte identical. The push target follows from the
+                # checked-out branch, so no push-command change is needed.
+                if HUGO_TARGET_BRANCH == "main":
+                    subprocess.run(["git", "clone", repo_url, str(HUGO_REPO_LOCAL)], check=True)
+                else:
+                    subprocess.run(["git", "clone", "--branch", HUGO_TARGET_BRANCH,
+                                    repo_url, str(HUGO_REPO_LOCAL)], check=True)
             (HUGO_REPO_LOCAL / "content/posts").mkdir(parents=True, exist_ok=True)
             (HUGO_REPO_LOCAL / "static/images").mkdir(parents=True, exist_ok=True)
             print("✅ Hugo 레포 준비 완료")
         except Exception as e:
-            print(f"⚠️  Hugo 레포 설정 실패: {e}")
+            # §3-9: 클론/풀 실패 시 경고만 하고 계속하면 전 기사 발행 실패로 이어진다. 빠른 실패.
+            print(f"❌ Hugo 레포 설정 실패 → 런 중단: {e}")
+            sys.exit(1)
 
     def load_posted_articles(self) -> list:
+        # §3-4: JSON 손상 시 빈 리스트 반환 금지 — 전체 재처리 트리거가 된다.
         if Path(POSTED_ARTICLES_FILE).exists():
-            with open(POSTED_ARTICLES_FILE, 'r') as f:
-                try:
-                    return json.load(f)
-                except:
-                    return []
+            try:
+                data = json.loads(Path(POSTED_ARTICLES_FILE).read_text(encoding='utf-8'))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                print(f"❌ {POSTED_ARTICLES_FILE} 손상 — 파싱 불가: {e}")
+                print("   빈 목록으로 진행하면 전체 기사를 재처리하므로 런을 중단합니다.")
+                sys.exit(1)
+            if not isinstance(data, list):
+                print(f"❌ {POSTED_ARTICLES_FILE} 형식이 리스트가 아님 — 런을 중단합니다.")
+                sys.exit(1)
+            return data
         return []
 
     def save_posted_articles(self):
         with open(POSTED_ARTICLES_FILE, 'w') as f:
             json.dump(self.posted_articles, f, indent=2)
 
+    @staticmethod
+    def _fm_text(s: str) -> str:
+        """front matter 문자열 정제 (§3-14): 개행 제거 + 쌍따옴표 치환 + 공백 정리."""
+        cleaned = (s or "").replace('"', "'").replace("\r", " ").replace("\n", " ")
+        return re.sub(r"\s+", " ", cleaned).strip()
+
+    def _resolve_unique_slug(self, base_slug: str, source_url: str) -> str:
+        """슬러그 충돌 해결 (§3-2). 같은 원문 재처리는 덮어쓰기 허용,
+        다른 글이면 -2/-3 suffix 부여. 최종 슬러그를 반환한다."""
+        posts_dir = HUGO_REPO_LOCAL / "content/posts"
+        slug = base_slug
+        for n in range(1, 101):
+            candidate = base_slug if n == 1 else f"{base_slug}-{n}"
+            md_path = posts_dir / f"{candidate}.md"
+            if not md_path.exists():
+                if n > 1:
+                    print(f"   ⚠️ 슬러그 충돌 → 고유 슬러그 사용: {candidate}")
+                return candidate
+            # 파일이 있으면 원문이 같은지 확인한다
+            existing_source = ""
+            try:
+                text = md_path.read_text(encoding='utf-8')
+                m = re.search(r'^source_url:\s*"?([^"\n]+)"?\s*$', text, re.MULTILINE)
+                if m:
+                    existing_source = m.group(1).strip()
+            except Exception:
+                pass
+            if source_url and existing_source == source_url:
+                print(f"   ℹ️ 동일 원문 재처리 — 기존 파일 덮어쓰기: {candidate}.md")
+                return candidate
+            # 다른 글의 파일이면 다음 suffix 시도 (기존 파일에 source_url이 없어도 보존)
+            slug = candidate
+        raise RuntimeError(f"슬러그 충돌 해결 실패 (100회 초과): {base_slug}")
+
     def publish_to_hugo(self, title: str, content: str, slug: str,
                         excerpt: str, article_date: datetime,
-                        featured_image_path: Path = None) -> bool:
-        """Hugo Markdown 파일 생성 + GitHub push"""
+                        featured_image_path: Path = None, source_url: str = ""):
+        """Hugo Markdown 파일 생성 + GitHub push.
+        성공 시 최종 슬러그(str), 실패 시 None을 반환한다."""
         try:
             # 원문 날짜 유지 + KST 변환
             from datetime import timezone, timedelta
@@ -333,6 +464,9 @@ class NewsTranslator:
             date_str = dt.strftime('%Y-%m-%dT%H:%M:%S%z')
             date_str = date_str[:-2] + ":" + date_str[-2:]
 
+            # §3-2: 슬러그 충돌 해결 (덮어쓰기 전 존재 검사)
+            final_slug = self._resolve_unique_slug(slug, source_url)
+
             # 이미지 처리
             cover_image = ""
             if featured_image_path and featured_image_path.exists():
@@ -340,31 +474,36 @@ class NewsTranslator:
                 img_dest.write_bytes(featured_image_path.read_bytes())
                 cover_image = f"/images/{featured_image_path.name}"
 
+            # §3-14: front matter 값 개행 제거
+            fm_title = self._fm_text(title)
+            fm_excerpt = self._fm_text(excerpt)
+
             # Front matter + 본문
             cover_block = f"""cover:
   image: "{cover_image}"
-  alt: "{title.replace('"', "'")}"
+  alt: "{fm_title}"
   relative: false""" if cover_image else ""
 
             md_content = f"""---
-title: "{title.replace('"', "'")}"
+title: "{fm_title}"
 date: {date_str}
-slug: "{slug}"
-description: "{excerpt.replace('"', "'")}"
-summary: "{excerpt.replace('"', "'")}"
+slug: "{final_slug}"
+description: "{fm_excerpt}"
+summary: "{fm_excerpt}"
+source_url: "{source_url}"
 {cover_block}
 draft: false
 ---
 
 {content}
 """
-            md_path = HUGO_REPO_LOCAL / "content/posts" / f"{slug}.md"
+            md_path = HUGO_REPO_LOCAL / "content/posts" / f"{final_slug}.md"
             md_path.write_text(md_content, encoding='utf-8')
             print(f"📝 MD 파일 생성: {md_path.name}")
 
             if not GITHUB_TOKEN:
                 print("⚠️  GITHUB_TOKEN 없음 → 로컬 저장만 완료")
-                return True
+                return final_slug
 
             # git commit & push
             subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "config", "user.email", "action@github.com"], check=True)
@@ -373,29 +512,52 @@ draft: false
             result = subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "diff", "--cached", "--quiet"], capture_output=True)
             if result.returncode != 0:
                 subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "commit", "-m",
-                    f"post: {title[:50]} [{article_date.strftime('%Y-%m-%d')}]"], check=True)
+                    f"post: {title[:50]} [{article_date.strftime('%Y-%m-%d')}]"] , check=True)
                 subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "push"], check=True)
                 print(f"✅ GitHub push 완료: {title[:50]}")
-            return True
+            return final_slug
 
         except Exception as e:
             print(f"❌ Hugo 발행 실패: {e}")
-            return False
+            return None
 
     def fetch_rss_articles(self) -> list:
         print(f"📡 RSS 피드 확인: {PRONEWS_RSS}")
-        feed = feedparser.parse(PRONEWS_RSS)
+        try:
+            feed = feedparser.parse(PRONEWS_RSS)
+        except Exception as e:
+            print(f"❌ RSS 파싱 실패: {e}")
+            self._rss_ok = False
+            return []
+        if getattr(feed, "bozo", False):
+            print(f"⚠️ RSS 피드 비정상(bozo): {getattr(feed, 'bozo_exception', '')}")
+        # #2: feedparser는 네트워크 실패 시에도 예외 없이 bozo=True, entries=0,
+        # status=None을 반환하므로, 상태 코드 또는 엔트리 유무로 정상 여부를 판정한다.
+        entries = getattr(feed, "entries", []) or []
+        self._rss_ok = feed.get("status") == 200 or (bool(entries) and not getattr(feed, "bozo", False))
+        if not self._rss_ok:
+            print(f"❌ RSS 피드 응답 없음 (status={feed.get('status')}, bozo={getattr(feed, 'bozo', False)}, entries={len(entries)})")
         articles = []
         for entry in feed.entries:
-            if not FORCE_UPDATE and entry.link in self.posted_articles:
-                continue
+            # entry.link/title 접근도 try 안으로 — 결손 엔트리가 런 전체를 죽이지 않게
             try:
-                article_date = datetime(*entry.published_parsed[:6])
-            except:
-                article_date = datetime.now()
+                link = getattr(entry, "link", None)
+                title = getattr(entry, "title", None)
+                if not link or not title:
+                    print(f"   ⚠️ RSS 엔트리 결손 스킵 (link/title 없음): {getattr(entry, 'id', '?')}")
+                    continue
+                if not FORCE_UPDATE and link in self.posted_articles:
+                    continue
+                try:
+                    article_date = datetime(*entry.published_parsed[:6])
+                except Exception:
+                    article_date = datetime.now()
+            except Exception as e:
+                print(f"   ⚠️ RSS 엔트리 처리 오류 스킵: {e}")
+                continue
             articles.append({
-                'title': entry.title,
-                'link': entry.link,
+                'title': title,
+                'link': link,
                 'date': article_date,
                 'source': 'rss'
             })
@@ -425,6 +587,7 @@ draft: false
 
         collected = []
         seen_links = set()
+        pages_ok = 0
         page = actual_max_page if oldest_first else 1
 
         while len(collected) < need * 3 and 1 <= page <= ARCHIVE_MAX_PAGES:
@@ -442,6 +605,7 @@ draft: false
                         break
 
                 res.raise_for_status()
+                pages_ok += 1
                 soup = BeautifulSoup(res.text, 'lxml')
                 found = []
 
@@ -502,9 +666,11 @@ draft: false
         collected.sort(key=lambda x: x['date'], reverse=not oldest_first)
         result = collected[:need]
         print(f"   아카이브 수집 완료: {len(result)}건")
+        self._archive_ok = pages_ok > 0
         return result
 
-    def get_articles_to_process(self) -> list:
+    def get_articles_to_process(self):
+        """처리 대상 기사와 수집 소스 상태를 반환한다. (기사 목록, 수집 실패 여부)"""
         if TARGET_URL:
             print(f"🎯 TARGET_URL 모드: {TARGET_URL}")
             title, dt = self.fetch_title_and_date(TARGET_URL)
@@ -513,7 +679,7 @@ draft: false
                 'link': TARGET_URL,
                 'date': dt or datetime.now(),
                 'source': 'single'
-            }]
+            }], False
 
         if IS_SCHEDULED:
             print("🕐 자동 실행: 최신 우선 + 아카이브 보충")
@@ -542,7 +708,8 @@ draft: false
             target = target[:DAILY_LIMIT]
 
         print(f"✅ 처리 대상: {len(target)}건")
-        return target
+        fetch_failed = (not self._rss_ok) and (not self._archive_ok)
+        return target, fetch_failed
 
     def fetch_title_and_date(self, url: str):
         try:
@@ -803,21 +970,9 @@ draft: false
             print(f"⚠️ 이미지 다운로드 실패: {e}")
             return None
 
-    def commit_posted_articles(self):
-        try:
-            subprocess.run(['git', 'config', 'user.email', 'action@github.com'], check=True)
-            subprocess.run(['git', 'config', 'user.name', 'GitHub Action'], check=True)
-            subprocess.run(['git', 'add', POSTED_ARTICLES_FILE], check=True)
-            result = subprocess.run(['git', 'diff', '--cached', '--quiet'], capture_output=True)
-            if result.returncode != 0:
-                subprocess.run(['git', 'commit', '-m',
-                    f'chore: update posted_articles [{datetime.now().strftime("%Y-%m-%d %H:%M")}]'], check=True)
-                subprocess.run(['git', 'push'], check=True)
-                print("📝 posted_articles.json → git 커밋 완료")
-        except Exception as e:
-            print(f"⚠️ git 커밋 실패: {e}")
-
-    def process_article(self, article: dict) -> bool:
+    def process_article(self, article: dict) -> str:
+        """기사 1건을 처리한다. 결과 상태를 반환한다.
+        "published" / "duplicate" / "failed" (#6: 종료 코드 판정용)."""
         print(f"\n{'='*60}")
         print(f"📰 {article['title'][:70]}")
         print(f"📅 {article['date'].strftime('%Y-%m-%d %H:%M')} [{article.get('source','?')}]")
@@ -825,16 +980,20 @@ draft: false
 
         if self.gemini.rate_limit_hit:
             print("🛑 429 플래그 → 다음 런 이월")
-            return False
+            return "failed"
 
-        if not FORCE_UPDATE and article['link'] in self.posted_articles:
+        # §3-4: 2단계 중복 검사 (posted JSON + MD source_url)
+        if self.is_already_published(article['link']):
+            if article['link'] not in self.posted_articles:
+                self.posted_articles.append(article['link'])
+                self.save_posted_articles()
             print("⏭️  이미 게시됨 → 스킵")
-            return False
+            return "duplicate"
 
         body_text, exact_date, body_images = self.fetch_full_content(article['link'])
         if not body_text:
             print("⚠️ 본문 스크래핑 실패 → 스킵")
-            return False
+            return "failed"
 
         if exact_date:
             article['date'] = exact_date
@@ -849,7 +1008,7 @@ draft: false
 
         if not translated or not translated.get('title') or not translated.get('content'):
             print("❌ 번역 실패 → 스킵")
-            return False
+            return "failed"
 
         title_ko    = translated['title']
         content_ko  = translated['content']
@@ -863,7 +1022,7 @@ draft: false
             content_ko = self.gemini.expand_thin_content(title_ko, content_ko)
             if len(content_ko.replace('\n', '').replace(' ', '')) < 400:
                 print("❌ 보강 후에도 내용 부족 → 스킵")
-                return False
+                return "failed"
 
         if self.gemini._has_japanese(content_ko):
             print("   ⚠️ 일본어 잔존 → 재번역 1회 시도...")
@@ -947,22 +1106,28 @@ draft: false
         final_content = re.sub(r'\n{3,}', '\n\n', final_content).strip()
 
 
-        if self.publish_to_hugo(title_ko, final_content, slug, excerpt,
-                                article['date'], local_img):
+        final_slug = self.publish_to_hugo(title_ko, final_content, slug, excerpt,
+                                article['date'], local_img, source_url=article['link'])
+        if final_slug:
+            # C1: 이번 런에 발행한 슬러그를 모아 런 종료 시 라이브 URL을 검증한다.
+            self.new_post_slugs.append(final_slug)
             if local_img:
                 try: local_img.unlink()
                 except: pass
             if not FORCE_UPDATE:
                 self.posted_articles.append(article['link'])
                 self.save_posted_articles()
-            return True
-        return False
+                self.published_sources.add(article['link'])
+            return "published"
+        return "failed"
 
-    def run(self):
+    def run(self) -> int:
+        """실행하고 종료 코드를 반환한다. 0=성공, 1=실패. (§3-3)"""
         print(f"\n{'='*60}")
-        print(f"DRONE.jp → proDRONE.kr 자동 번역 v9.0.0")
-        print(f"엔진: {GEMINI_MODEL} | 호출: 기사당 1회 JSON 통합")
-        print(f"모드: {'자동 (최신→아카이브 보충)' if IS_SCHEDULED else '수동 (아카이브 오래된 순)'}")
+        print(f"DRONE.jp → proDRONE.kr 자동 번역 v9.4.0")
+        print(f"엔진: {GEMINI_MODEL} | 호출: 기사당 번역+편집 2회")
+        print(f"모드: {'자동 (최신→아카이브 보충)' if IS_SCHEDULED else '수동 (최신 기사 우선)'}")
+        print(f"실행 모드: {EFFECTIVE_EVENT} (override={os.environ.get('RUN_MODE_OVERRIDE', '').strip() or 'none'})")
         print(f"발행: Hugo MD → GitHub push | 일일 한도: {DAILY_LIMIT}건")
         print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}\n")
@@ -971,34 +1136,98 @@ draft: false
             print("⚠️  GITHUB_TOKEN 없음 → 로컬 저장 모드로 실행")
 
         print("🔑 Gemini API 키 검증...")
-        test = self.gemini._call_api("テスト를 한국어로 번역:", max_tokens=30)
+        test = self.gemini._call_api("テストを 한국어로 번역:", max_tokens=30)
         if not test:
             print("❌ Gemini API 키 오류 → 종료")
-            sys.exit(1)
+            return 1
         print(f"   ✅ API 정상: '{test}'")
 
-        articles = self.get_articles_to_process()
+        articles, fetch_failed = self.get_articles_to_process()
+        if fetch_failed:
+            print("❌ 수집 소스(RSS+아카이브) 전부 실패 → 런 실패 처리")
+            return 1
         if not articles:
-            print("✅ 처리할 기사 없음")
-            return
+            print("✅ 처리할 기사 없음 (신규 기사 없음 — 정상 종료)")
+            return 0
 
-        success = 0
+        self.new_post_slugs = []
+        counts = {"published": 0, "duplicate": 0, "failed": 0}
         try:
             for i, article in enumerate(articles, 1):
                 if self.gemini.rate_limit_hit:
                     print(f"\n🛑 429 런 종료 → 남은 {len(articles)-i+1}건 다음 런 이월")
                     break
                 print(f"\n[{i}/{len(articles)}]")
-                if self.process_article(article):
-                    success += 1
+                # #7과 같은 취지: 기사 단위 try/except — 한 기사의 예상 못 한 예외가
+                # 런 전체를 죽이지 않게.
+                try:
+                    outcome = self.process_article(article)
+                except Exception as e:
+                    print(f"❌ 기사 처리 중 예상 못 한 예외 ({article.get('link', '?')}): {e}")
+                    outcome = "failed"
+                if outcome not in counts:
+                    outcome = "failed"
+                counts[outcome] += 1
                 if i < len(articles):
                     time.sleep(10)
+        except Exception as e:
+            print(f"❌ 런 루프 중 예상 못 한 예외: {e}")
+            counts["failed"] += 1
         finally:
             print(f"\n{'='*60}")
-            print(f"🏁 완료: {success}/{len(articles)}건 게시")
+            print(f"🏁 완료: 게시 {counts['published']} / 중복 {counts['duplicate']} / "
+                  f"실패 {counts['failed']} (대상 {len(articles)}건)")
             print(f"{'='*60}\n")
+
+        # C1: 배포 검증 — 이번 런에 새로 발행한 글의 라이브 URL이 HTTP 200인지 확인한다.
+        # push는 기사마다 이미 끝났고, Pages 빌드·배포 지연을 감안해 시간 창 안에서 재시도한다.
+        if self.new_post_slugs:
+            if not self.verify_deployment():
+                print("❌ 배포 검증 실패 → 런 실패 처리")
+                return 1
+        # #6: 실제 실패가 있고 게시 0건일 때만 exit 1.
+        # 전부 중복이면 정상 종료(0) — 이미 게시된 TARGET_URL도 실패가 아니다.
+        if counts["failed"] > 0 and counts["published"] == 0:
+            print(f"❌ 실제 실패 {counts['failed']}건, 게시 0건 → 런 실패 처리")
+            return 1
+        return 0
+
+    def verify_deployment(self) -> bool:
+        """C1: 이번 런에 새로 발행한 글의 라이브 URL이 HTTP 200인지 확인한다.
+        Cloudflare Pages 빌드·배포 지연을 감안해 DEPLOY_VERIFY_TIMEOUT까지 재시도한다.
+        하나라도 200이 아니면 False를 반환한다."""
+        urls = [f"{DEPLOY_VERIFY_BASE_URL}/posts/{slug}/" for slug in self.new_post_slugs]
+        print(f"🔍 배포 검증: {len(urls)}건 (최대 {DEPLOY_VERIFY_TIMEOUT}초 대기)")
+        deadline = time.time() + DEPLOY_VERIFY_TIMEOUT
+        pending = list(urls)
+        while pending:
+            remaining = []
+            for url in pending:
+                try:
+                    res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+                    if res.status_code == 200:
+                        print(f"   ✅ 배포 검증 통과 (HTTP 200): {url}")
+                    else:
+                        print(f"   ⏳ 배포 검증 대기 (HTTP {res.status_code}): {url}")
+                        remaining.append(url)
+                except Exception as e:
+                    print(f"   ⏳ 배포 검증 대기 (오류): {url} — {e}")
+                    remaining.append(url)
+            pending = remaining
+            if not pending:
+                return True
+            if time.time() >= deadline:
+                for url in pending:
+                    print(f"   ❌ 배포 검증 실패 ({DEPLOY_VERIFY_TIMEOUT}초 내 200 없음): {url}")
+                return False
+            time.sleep(DEPLOY_VERIFY_INTERVAL)
+        return True
+
+
+def main() -> int:
+    bot = NewsTranslator()
+    return bot.run()
 
 
 if __name__ == "__main__":
-    bot = NewsTranslator()
-    bot.run()
+    sys.exit(main())
