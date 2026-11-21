@@ -386,6 +386,19 @@ class NewsTranslator:
                 else:
                     subprocess.run(["git", "clone", "--branch", HUGO_TARGET_BRANCH,
                                     repo_url, str(HUGO_REPO_LOCAL)], check=True)
+            # Branch guard: the clone/pull must have landed on the target
+            # branch. A typo'd branch name fails the clone already (§3-9),
+            # but a stale local dir on another branch would silently pull
+            # and then push posts to the WRONG branch (e.g. main). Never
+            # fall back to main: verify explicitly and fail fast.
+            current_branch = subprocess.run(
+                ["git", "-C", str(HUGO_REPO_LOCAL), "branch", "--show-current"],
+                capture_output=True, text=True, check=True).stdout.strip()
+            if current_branch != HUGO_TARGET_BRANCH:
+                print(f"❌ Hugo 레포 브랜치 불일치: 요청 '{HUGO_TARGET_BRANCH}', "
+                      f"실제 '{current_branch or '(detached)'}' → 런 중단")
+                print("   (main으로 폴백하지 않습니다 — 브랜치명을 확인하세요)")
+                sys.exit(1)
             (HUGO_REPO_LOCAL / "content/posts").mkdir(parents=True, exist_ok=True)
             (HUGO_REPO_LOCAL / "static/images").mkdir(parents=True, exist_ok=True)
             print("✅ Hugo 레포 준비 완료")
@@ -513,7 +526,11 @@ draft: false
             if result.returncode != 0:
                 subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "commit", "-m",
                     f"post: {title[:50]} [{article_date.strftime('%Y-%m-%d')}]"], check=True)
-                subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "push"], check=True)
+                # Push target is explicit: a bare `git push` would follow the
+                # checked-out branch's upstream, which is wrong if the local
+                # dir was ever on another branch. Name the target branch.
+                subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "push",
+                                "origin", f"HEAD:{HUGO_TARGET_BRANCH}"], check=True)
                 print(f"✅ GitHub push 완료: {title[:50]}")
             return final_slug
 
@@ -1136,7 +1153,7 @@ draft: false
             print("⚠️  GITHUB_TOKEN 없음 → 로컬 저장 모드로 실행")
 
         print("🔑 Gemini API 키 검증...")
-        test = self.gemini._call_api("テストを 한국어로 번역:", max_tokens=30)
+        test = self.gemini._call_api("テスト를 한국어로 번역:", max_tokens=30)
         if not test:
             print("❌ Gemini API 키 오류 → 종료")
             return 1
@@ -1225,6 +1242,17 @@ draft: false
 
 
 def main() -> int:
+    # Step 3 guard: a preview branch must never be verified against the
+    # live site. If the target branch is not main but the verify base URL
+    # is still https://prodrone.kr (typo / forgotten input), the run would
+    # push to the preview branch and then "verify" against the live site.
+    # Fail fast here, before any clone, push, or Gemini call.
+    if (HUGO_TARGET_BRANCH != "main"
+            and DEPLOY_VERIFY_BASE_URL.strip().rstrip("/") == PRODRONE_SITE_URL):
+        print("❌ 설정 오류: hugo_target_branch가 main이 아닌데 "
+              "DEPLOY_VERIFY_BASE_URL이 라이브 사이트(https://prodrone.kr)입니다.")
+        print("   프리뷰 브랜치는 프리뷰 URL(예: https://v8-preview.prodrone-54v.pages.dev)로 검증해야 합니다.")
+        return 1
     bot = NewsTranslator()
     return bot.run()
 
