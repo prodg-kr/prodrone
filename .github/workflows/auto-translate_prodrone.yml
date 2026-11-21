@@ -53,11 +53,6 @@ jobs:
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
-        with:
-          # 전체 히스토리를 받아야 `git pull --rebase origin main`이
-          # 브랜치 테스트에서도 merge base를 찾는다. 얕은 clone이면
-          # 브랜치 자체 커밋을 main 위에 얹으려다 add/add 충돌이 난다.
-          fetch-depth: 0
 
       - name: Python 설정
         uses: actions/setup-python@v5
@@ -92,10 +87,16 @@ jobs:
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
           git stash
-          git pull --rebase origin main
+          # main이 아닌 브랜치(v8-test 등)에서도 돌아야 한다. main으로 rebase하면
+          # main이 브랜치 생성 이후 전진했을 때 브랜치 커밋을 main 위에 얹으려다
+          # 충돌하거나 push가 거부된다. 현재 브랜치 기준으로 rebase한다.
+          # main에서 돌 때는 origin main과 동일하다.
+          git pull --rebase origin ${{ github.ref_name }}
           git stash pop || true
           git add posted_articles_drone.json
-          git diff --cached --quiet || git commit -m "chore: update posted_articles"
+          # 이 커밋은 posted JSON만 바꾸고 사이트 내용은 바꾸지 않으므로
+          # Pages 빌드가 필요 없다 — [CF-Pages-Skip]으로 빌드를 건너뛴다.
+          git diff --cached --quiet || git commit -m "[CF-Pages-Skip] chore: update posted_articles"
           git push
 
       - name: 완료 로그
