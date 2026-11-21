@@ -512,7 +512,7 @@ draft: false
             result = subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "diff", "--cached", "--quiet"], capture_output=True)
             if result.returncode != 0:
                 subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "commit", "-m",
-                    f"post: {title[:50]} [{article_date.strftime('%Y-%m-%d')}]"] , check=True)
+                    f"post: {title[:50]} [{article_date.strftime('%Y-%m-%d')}]"], check=True)
                 subprocess.run(["git", "-C", str(HUGO_REPO_LOCAL), "push"], check=True)
                 print(f"✅ GitHub push 완료: {title[:50]}")
             return final_slug
