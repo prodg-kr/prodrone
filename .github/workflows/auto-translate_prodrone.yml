@@ -1,8 +1,17 @@
+# v9.4.0 부분 수정 변경 요약 (2026-11-21, 감사 보고서 action-code-audit-2026-11-21.md 기반)
+# - [신규] concurrency guard 추가 (§3-5): 스케줄 실행과 수동 실행이 겹쳐 같은
+#   posted JSON·Hugo 레포를 두고 충돌하는 것을 방지. cancel-in-progress: false라
+#   실행 중 런은 끝까지 가고, 다음 런은 대기한다.
+# - [수정] python -u 실행 (§4-9): 출력 버퍼링 때문에 Actions 로그 타임스탬프가
+#   뭉개지는 문제 방지.
+# - [유지] 스케줄 10:00 KST (cron '0 1 * * *'), workflow_dispatch 입력
+#   (force_update/gemini_model/target_url), posted_articles 커밋 스텝,
+#   최소 권한 contents: write.
 name: drone.jp → proDRONE.kr 자동 번역 및 게시
 
 on:
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 1 * * *'  # 매일 KST 10:00 (UTC 01:00)
   workflow_dispatch:
     inputs:
       force_update:
@@ -17,6 +26,23 @@ on:
         description: '단일 기사 URL(선택): 예) https://drone.jp/news/....html'
         required: false
         default: ''
+      event_name_override:
+        description: '스케줄 경로 테스트용: schedule 입력 시 스케줄 경로(RSS + 최신 보충)로 실행 (기본: 실제 이벤트)'
+        required: false
+        default: ''
+      hugo_target_branch:
+        description: 'Hugo 사이트 브랜치 (게시물을 푸시할 브랜치; 기본: main)'
+        required: false
+        default: 'main'
+      deploy_verify_base_url:
+        description: '배포 검증 기준 URL (기본: https://prodrone.kr)'
+        required: false
+        default: 'https://prodrone.kr'
+
+# 동시 실행 방지 (§3-5): 같은 그룹의 런은 직렬로만 실행
+concurrency:
+  group: prodrone-translate
+  cancel-in-progress: false
 
 jobs:
   translate-and-post:
@@ -44,8 +70,16 @@ jobs:
           FORCE_UPDATE: ${{ github.event.inputs.force_update || 'false' }}
           GEMINI_MODEL: ${{ github.event.inputs.gemini_model || 'gemini-2.5-flash-lite' }}
           TARGET_URL: ${{ github.event.inputs.target_url || '' }}
+          # #10(a): 스케줄 경로를 브랜치에서 미리 시험할 때 사용.
+          # GITHUB_EVENT_NAME은 기본 변수라 덮어쓰기가 무시되므로, 그대로 두고
+          # 별도 변수로 전달한다. (재검수 1번)
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-        run: python translate_and_post_prodrone.py
+          RUN_MODE_OVERRIDE: ${{ github.event.inputs.event_name_override || '' }}
+          # Step 3 (option B): isolated preview-branch test. Schedule runs
+          # leave the inputs empty, so these resolve to the defaults.
+          HUGO_TARGET_BRANCH: ${{ github.event.inputs.hugo_target_branch || 'main' }}
+          DEPLOY_VERIFY_BASE_URL: ${{ github.event.inputs.deploy_verify_base_url || 'https://prodrone.kr' }}
+        run: python -u translate_and_post_prodrone.py
 
       - name: posted_articles 커밋
         if: always()
