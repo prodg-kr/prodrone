@@ -1,4 +1,5 @@
-requests==2.31.0
-feedparser==6.0.11
-beautifulsoup4==4.12.3
-lxml==5.1.0
+# v9.4.0: 2024년 핀 버전을 2026-11-21 기준 PyPI 최신 안정 버전으로 상향 (§4-5)
+requests==2.34.2
+feedparser==6.0.14
+beautifulsoup4==4.15.0
+lxml==6.1.3
